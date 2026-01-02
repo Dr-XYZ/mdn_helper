@@ -6,7 +6,7 @@ const matter = require('gray-matter');
 // --- 設定 ---
 const CONTENT_REPO = './mdn-content';
 const TRANS_REPO = './mdn-translated-content';
-const TARGET_LOCALE = 'zh-tw'; // 若要改語言，請改這裡
+const TARGET_LOCALE = 'zh-tw';
 const OUTPUT_DIR = './public';
 
 async function run() {
@@ -19,15 +19,14 @@ async function run() {
     const latestCommits = new Map();
     const gitLogProcess = spawn('git', [
         'log', 
-        '--format=::: %H',  // 自定義分隔符，方便解析
-        '--name-only',      // 只列出檔名
-        'files/en-us'       // 只看英文目錄
+        '--format=::: %H', 
+        '--name-only', 
+        'files/en-us'
     ], { cwd: CONTENT_REPO });
 
     let currentHash = null;
     let lineBuffer = '';
 
-    // 使用 Stream 解析，極省記憶體
     for await (const chunk of gitLogProcess.stdout) {
         lineBuffer += chunk;
         const lines = lineBuffer.split('\n');
@@ -37,7 +36,6 @@ async function run() {
             if (line.startsWith('::: ')) {
                 currentHash = line.substring(4).trim();
             } else if (line && currentHash) {
-                // 如果這個檔案還沒記錄過，這就是它最新的 Hash
                 if (!latestCommits.has(line)) {
                     latestCommits.set(line, currentHash);
                 }
@@ -52,12 +50,9 @@ async function run() {
     const processingPromises = [];
 
     for (const [srcFilePath, currentHash] of latestCommits) {
-        // [重要] 過濾非 Markdown 檔案，保持跟原本功能一致
         if (!srcFilePath.endsWith('.md')) continue;
 
         processingPromises.push((async () => {
-            // srcFilePath 範例: files/en-us/web/javascript/index.md
-            // 計算相對路徑 (去除 files/en-us/)
             const relativePath = srcFilePath.replace('files/en-us/', '');
             const transFilePath = path.join(TRANS_REPO, 'files', TARGET_LOCALE, relativePath);
             
@@ -70,18 +65,22 @@ async function run() {
             };
 
             try {
-                // 讀取翻譯檔案
                 const content = await fs.readFile(transFilePath, 'utf8');
                 const parsed = matter(content);
                 
-                if (parsed.data.sourceCommit) {
-                    item.sourceCommit = parsed.data.sourceCommit;
+                // --- 修正重點開始 ---
+                // 讀取 l10n 屬性下的 sourceCommit
+                // 使用 ?. (Optional Chaining) 避免舊檔案沒有 l10n 造成報錯
+                const recordedCommit = parsed.data.l10n?.sourceCommit;
+                // --- 修正重點結束 ---
+
+                if (recordedCommit) {
+                    item.sourceCommit = recordedCommit;
                     item.status = (item.sourceCommit === currentHash) ? 'up_to_date' : 'outdated';
                 } else {
                     item.status = 'missing_meta';
                 }
             } catch (err) {
-                // 讀取失敗通常代表檔案不存在
                 item.status = 'untranslated';
             }
             
@@ -89,19 +88,16 @@ async function run() {
         })());
     }
 
-    // 3. 並發執行比對
+    // 3. 並發執行
     const results = await Promise.all(processingPromises);
     report.push(...results);
 
-    // 4. 輸出結果
+    // 4. 輸出
     await fs.ensureDir(OUTPUT_DIR);
     await fs.writeFile(path.join(OUTPUT_DIR, 'data.json'), JSON.stringify(report, null, 2));
     
-    // 複製網頁模板
     if (fs.existsSync('template.html')) {
         await fs.copy('template.html', path.join(OUTPUT_DIR, 'index.html'));
-    } else {
-        console.warn('警告: 找不到 template.html，網頁可能無法顯示。');
     }
 
     console.log(`處理完成，共生成 ${report.length} 筆資料。`);

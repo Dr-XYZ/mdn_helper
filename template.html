@@ -15,25 +15,24 @@
 <div id="app" v-cloak class="container mx-auto p-6">
     <header class="mb-8">
         <h1 class="text-3xl font-bold mb-2">MDN 翻譯同步狀態報告</h1>
-        <p class="text-gray-600">比對來源: mdn/content vs mdn/translated-content</p>
         <p class="text-sm text-gray-500">生成時間: {{ generatedTime }}</p>
     </header>
 
     <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
         <div class="bg-white p-4 rounded shadow border-l-4 border-green-500 cursor-pointer hover:bg-green-50" @click="filterStatus = 'up_to_date'">
-            <div class="text-gray-500 text-sm">最新版本 (Up to date)</div>
+            <div class="text-gray-500 text-sm">最新版本</div>
             <div class="text-2xl font-bold">{{ stats.up_to_date }}</div>
         </div>
         <div class="bg-white p-4 rounded shadow border-l-4 border-yellow-500 cursor-pointer hover:bg-yellow-50" @click="filterStatus = 'outdated'">
-            <div class="text-gray-500 text-sm">需要更新 (Outdated)</div>
+            <div class="text-gray-500 text-sm">需要更新</div>
             <div class="text-2xl font-bold">{{ stats.outdated }}</div>
         </div>
         <div class="bg-white p-4 rounded shadow border-l-4 border-red-500 cursor-pointer hover:bg-red-50" @click="filterStatus = 'missing_meta'">
-            <div class="text-gray-500 text-sm">缺少 Meta (No SourceCommit)</div>
+            <div class="text-gray-500 text-sm">缺少 Meta</div>
             <div class="text-2xl font-bold">{{ stats.missing_meta }}</div>
         </div>
-        <div class="bg-white p-4 rounded shadow border-l-4 border-gray-500 cursor-pointer hover:bg-gray-50" @click="filterStatus = 'untranslated'">
-            <div class="text-gray-500 text-sm">未翻譯 (Untranslated)</div>
+        <div class="bg-white p-4 rounded shadow border-l-4 border-gray-400 cursor-pointer hover:bg-gray-50" @click="filterStatus = 'untranslated'">
+            <div class="text-gray-500 text-sm">未翻譯</div>
             <div class="text-2xl font-bold">{{ stats.untranslated }}</div>
         </div>
     </div>
@@ -49,35 +48,39 @@
             <option value="missing_meta">缺少 Meta</option>
             <option value="untranslated">未翻譯</option>
         </select>
-        <div class="text-sm text-gray-500">
-            顯示 {{ filteredData.length }} / {{ rawData.length }} 筆
+        <div class="text-sm text-gray-500 whitespace-nowrap">
+            {{ filteredData.length }} / {{ rawData.length }} 筆
         </div>
     </div>
 
     <div class="bg-white rounded shadow overflow-x-auto">
         <table class="w-full text-left border-collapse">
             <thead>
-                <tr class="bg-gray-50 border-b">
-                    <th class="p-4 font-semibold text-gray-600">狀態</th>
-                    <th class="p-4 font-semibold text-gray-600">檔案路徑</th>
-                    <th class="p-4 font-semibold text-gray-600">Source Commit</th>
-                    <th class="p-4 font-semibold text-gray-600">Current Commit</th>
+                <tr class="bg-gray-50 border-b text-xs uppercase text-gray-500">
+                    <th class="p-4 w-16 text-center">狀態</th>
+                    <th class="p-4">檔案路徑</th>
+                    <th class="p-4 w-32">Source Commit</th>
+                    <th class="p-4 w-32">Current Commit</th>
                 </tr>
             </thead>
             <tbody>
-                <tr v-for="item in filteredData" :key="item.path" class="border-b hover:bg-gray-50">
-                    <td class="p-4">
-                        <span :class="badgeClass(item.status)" class="px-2 py-1 rounded text-xs font-bold uppercase">
-                            {{ statusLabel(item.status) }}
-                        </span>
+                <tr v-for="item in filteredData" :key="item.path" class="border-b hover:bg-gray-50 transition-colors">
+                    <td class="p-4 text-center">
+                        <div 
+                            class="w-4 h-4 rounded-full mx-auto shadow-sm"
+                            :class="colorClass(item.status)" 
+                            :title="statusLabel(item.status)">
+                        </div>
                     </td>
                     <td class="p-4 font-mono text-sm">
-                        <a :href="item.url" target="_blank" class="text-blue-600 hover:underline">{{ item.path }}</a>
+                        <a :href="item.url" target="_blank" class="text-blue-600 hover:underline block truncate max-w-lg" :title="item.path">
+                            {{ item.path }}
+                        </a>
                     </td>
-                    <td class="p-4 font-mono text-xs text-gray-500">
+                    <td class="p-4 font-mono text-xs text-gray-400">
                         {{ item.sourceCommit ? item.sourceCommit.substring(0, 7) : '-' }}
                     </td>
-                    <td class="p-4 font-mono text-xs text-gray-500">
+                    <td class="p-4 font-mono text-xs text-gray-400">
                         {{ item.currentCommit ? item.currentCommit.substring(0, 7) : '-' }}
                     </td>
                 </tr>
@@ -128,21 +131,22 @@
         methods: {
             statusLabel(status) {
                 const map = {
-                    'up_to_date': '最新',
-                    'outdated': '需更新',
-                    'missing_meta': '無 Meta',
-                    'untranslated': '未翻譯'
+                    'up_to_date': '最新版本 (Up to date)',
+                    'outdated': '需要更新 (Outdated)',
+                    'missing_meta': '缺少 Meta (No sourceCommit)',
+                    'untranslated': '未翻譯 (Untranslated)'
                 };
                 return map[status] || status;
             },
-            badgeClass(status) {
+            colorClass(status) {
+                // 定義顏色：綠、黃、紅、灰
                 const map = {
-                    'up_to_date': 'bg-green-100 text-green-800',
-                    'outdated': 'bg-yellow-100 text-yellow-800',
-                    'missing_meta': 'bg-red-100 text-red-800',
-                    'untranslated': 'bg-gray-100 text-gray-800'
+                    'up_to_date': 'bg-green-500',
+                    'outdated': 'bg-yellow-400',
+                    'missing_meta': 'bg-red-500',
+                    'untranslated': 'bg-gray-300'
                 };
-                return map[status] || 'bg-gray-100';
+                return map[status] || 'bg-gray-200';
             }
         }
     }).mount('#app');
