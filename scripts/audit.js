@@ -64,6 +64,8 @@ async function run() {
         processingPromises.push((async () => {
             const relativePath = srcFilePath.replace('files/en-us/', '');
             const transFilePath = path.join(TRANS_REPO, 'files', TARGET_LOCALE, relativePath);
+            // 英文原文的完整路徑 (用於未翻譯時讀取)
+            const fullSrcPath = path.join(CONTENT_REPO, srcFilePath);
             
             const item = {
                 path: relativePath,
@@ -76,29 +78,40 @@ async function run() {
             };
 
             try {
-                // [修改] 無論狀態如何，只要檔案存在就讀取內容
-                const fileContent = await fs.readFile(transFilePath, 'utf8');
-                item.content = fileContent; // 存入全文
-
-                const parsed = matter(fileContent);
+                // 嘗試讀取翻譯檔案
+                const transContent = await fs.readFile(transFilePath, 'utf8');
+                const parsed = matter(transContent);
                 const recordedCommit = parsed.data.l10n?.sourceCommit;
 
                 if (recordedCommit) {
                     item.sourceCommit = recordedCommit;
+                    
                     if (item.sourceCommit === currentHash) {
+                        // 情況 1: 最新版本
                         item.status = 'up_to_date';
-                        // 最新版本通常沒有 Diff
+                        item.content = transContent; // 顯示中文
                     } else {
+                        // 情況 2: 需要更新
                         item.status = 'outdated';
-                        // 只有過期才抓 Diff
+                        item.content = transContent; // 顯示中文 (讓 AI 參考舊翻譯)
                         item.diff = await getGitDiff(CONTENT_REPO, item.sourceCommit, item.currentCommit, srcFilePath);
                     }
                 } else {
+                    // 情況 3: 缺少 Meta (可能是壞掉的翻譯，或格式錯誤)
                     item.status = 'missing_meta';
+                    // [修改] 讀取英文原文，方便重翻
+                    item.content = await fs.readFile(fullSrcPath, 'utf8');
                 }
             } catch (err) {
-                // 檔案不存在 (Untranslated)
+                // 情況 4: 檔案不存在 (未翻譯)
                 item.status = 'untranslated';
+                
+                // [修改] 讀取英文原文
+                try {
+                    item.content = await fs.readFile(fullSrcPath, 'utf8');
+                } catch (e) {
+                    item.content = '(無法讀取英文原文)';
+                }
             }
             return item;
         })());
