@@ -1,102 +1,111 @@
 const fs = require('fs-extra');
 const path = require('path');
-const { glob } = require('glob');
+const { spawn } = require('child_process');
 const matter = require('gray-matter');
-const simpleGit = require('simple-git');
 
 // --- 設定 ---
-const CONTENT_REPO_PATH = './mdn-content'; // 英文源 Repo
-const TRANSLATED_REPO_PATH = './mdn-translated-content'; // 翻譯 Repo
-const TARGET_LOCALE = 'zh-tw'; // 目標語言，例如 zh-tw, ja, es
+const CONTENT_REPO = './mdn-content';
+const TRANS_REPO = './mdn-translated-content';
+const TARGET_LOCALE = 'zh-tw'; // 若要改語言，請改這裡
 const OUTPUT_DIR = './public';
 
-async function getLatestCommitHash(repoPath, filePath) {
-  const git = simpleGit(repoPath);
-  try {
-    // 獲取該檔案最後一次變更的完整 Hash
-    const log = await git.log({ file: filePath, maxCount: 1 });
-    return log.latest ? log.latest.hash : null;
-  } catch (e) {
-    return null;
-  }
-}
-
 async function run() {
-  console.log(`開始比對... 目標語言: ${TARGET_LOCALE}`);
-  
-  // 1. 獲取所有英文源文件
-  // MDN content 結構通常是 files/en-us/**/*.md
-  const srcPattern = path.join(CONTENT_REPO_PATH, 'files', 'en-us', '**', '*.md');
-  const srcFiles = await glob(srcPattern);
-  
-  const report = [];
+    console.time('執行時間');
+    console.log(`開始比對... 目標語言: ${TARGET_LOCALE}`);
 
-  for (const srcFileFull of srcFiles) {
-    // 計算相對路徑，例如：glossary/index.md
-    const relativePath = path.relative(path.join(CONTENT_REPO_PATH, 'files', 'en-us'), srcFileFull);
+    // 1. 快速獲取英文版 Git 歷史
+    console.log('正在讀取英文版 Git Log...');
     
-    // 計算對應的翻譯檔案路徑
-    const translatedFileFull = path.join(TRANSLATED_REPO_PATH, 'files', TARGET_LOCALE, relativePath);
-    
-    const item = {
-      path: relativePath,
-      status: '', // 1:Up-to-date, 2:Outdated, 3:No SourceCommit, 4:Untranslated
-      sourceCommit: null, // 翻譯檔中紀錄的 hash
-      currentCommit: null, // 英文檔當前的 hash
-      url: `https://developer.mozilla.org/${TARGET_LOCALE}/docs/${relativePath.replace('.md', '').replace('/index', '')}`
-    };
+    const latestCommits = new Map();
+    const gitLogProcess = spawn('git', [
+        'log', 
+        '--format=::: %H',  // 自定義分隔符，方便解析
+        '--name-only',      // 只列出檔名
+        'files/en-us'       // 只看英文目錄
+    ], { cwd: CONTENT_REPO });
 
-    // 獲取英文檔當前的最新 Commit Hash
-    // 注意：這一步在大規模檔案時會比較慢，實際生產環境可用 git ls-tree 優化，這裡為了準確性使用 git log
-    item.currentCommit = await getLatestCommitHash(CONTENT_REPO_PATH, path.relative(CONTENT_REPO_PATH, srcFileFull));
+    let currentHash = null;
+    let lineBuffer = '';
 
-    if (!fs.existsSync(translatedFileFull)) {
-      // 情況 4: 未翻譯
-      item.status = 'untranslated';
-    } else {
-      // 讀取翻譯檔案的 Front Matter
-      const fileContent = fs.readFileSync(translatedFileFull, 'utf8');
-      const parsed = matter(fileContent);
-      
-      // MDN 翻譯檔通常在 front matter 中有 'sourceCommit' 欄位
-      // 有些舊檔案可能是 'original_id' 或其他，這裡假設是標準的 sourceCommit
-      const recordedCommit = parsed.data.sourceCommit;
+    // 使用 Stream 解析，極省記憶體
+    for await (const chunk of gitLogProcess.stdout) {
+        lineBuffer += chunk;
+        const lines = lineBuffer.split('\n');
+        lineBuffer = lines.pop(); 
 
-      if (!recordedCommit) {
-        // 情況 3: 翻譯未有 sourceCommit (或是格式錯誤)
-        item.status = 'missing_meta';
-      } else {
-        item.sourceCommit = recordedCommit;
-        
-        if (recordedCommit === item.currentCommit) {
-          // 情況 1: 翻譯在最新版本
-          item.status = 'up_to_date';
-        } else {
-          // 情況 2: 需要更新
-          item.status = 'outdated';
+        for (const line of lines) {
+            if (line.startsWith('::: ')) {
+                currentHash = line.substring(4).trim();
+            } else if (line && currentHash) {
+                // 如果這個檔案還沒記錄過，這就是它最新的 Hash
+                if (!latestCommits.has(line)) {
+                    latestCommits.set(line, currentHash);
+                }
+            }
         }
-      }
     }
-    
-    report.push(item);
-    
-    if (report.length % 100 === 0) {
-      console.log(`已處理 ${report.length} 個檔案...`);
+
+    console.log(`索引建立完成，共發現 ${latestCommits.size} 個檔案。`);
+
+    // 2. 準備比對列表
+    const report = [];
+    const processingPromises = [];
+
+    for (const [srcFilePath, currentHash] of latestCommits) {
+        // [重要] 過濾非 Markdown 檔案，保持跟原本功能一致
+        if (!srcFilePath.endsWith('.md')) continue;
+
+        processingPromises.push((async () => {
+            // srcFilePath 範例: files/en-us/web/javascript/index.md
+            // 計算相對路徑 (去除 files/en-us/)
+            const relativePath = srcFilePath.replace('files/en-us/', '');
+            const transFilePath = path.join(TRANS_REPO, 'files', TARGET_LOCALE, relativePath);
+            
+            const item = {
+                path: relativePath,
+                status: 'untranslated',
+                sourceCommit: null,
+                currentCommit: currentHash,
+                url: `https://developer.mozilla.org/${TARGET_LOCALE}/docs/${relativePath.replace('.md', '').replace('/index', '')}`
+            };
+
+            try {
+                // 讀取翻譯檔案
+                const content = await fs.readFile(transFilePath, 'utf8');
+                const parsed = matter(content);
+                
+                if (parsed.data.sourceCommit) {
+                    item.sourceCommit = parsed.data.sourceCommit;
+                    item.status = (item.sourceCommit === currentHash) ? 'up_to_date' : 'outdated';
+                } else {
+                    item.status = 'missing_meta';
+                }
+            } catch (err) {
+                // 讀取失敗通常代表檔案不存在
+                item.status = 'untranslated';
+            }
+            
+            return item;
+        })());
     }
-  }
 
-  // 確保輸出目錄存在
-  fs.ensureDirSync(OUTPUT_DIR);
-  
-  // 寫入 JSON 資料
-  fs.writeFileSync(path.join(OUTPUT_DIR, 'data.json'), JSON.stringify(report, null, 2));
-  
-  // 複製模板
-  let template = fs.readFileSync('./template.html', 'utf8');
-  // 可以在這裡做一些簡單的替換，或者直接讓 HTML 讀取 data.json
-  fs.writeFileSync(path.join(OUTPUT_DIR, 'index.html'), template);
+    // 3. 並發執行比對
+    const results = await Promise.all(processingPromises);
+    report.push(...results);
 
-  console.log(`完成！報告已生成於 ${OUTPUT_DIR}/index.html`);
+    // 4. 輸出結果
+    await fs.ensureDir(OUTPUT_DIR);
+    await fs.writeFile(path.join(OUTPUT_DIR, 'data.json'), JSON.stringify(report, null, 2));
+    
+    // 複製網頁模板
+    if (fs.existsSync('template.html')) {
+        await fs.copy('template.html', path.join(OUTPUT_DIR, 'index.html'));
+    } else {
+        console.warn('警告: 找不到 template.html，網頁可能無法顯示。');
+    }
+
+    console.log(`處理完成，共生成 ${report.length} 筆資料。`);
+    console.timeEnd('執行時間');
 }
 
-run().catch(err => console.error(err));
+run().catch(console.error);
