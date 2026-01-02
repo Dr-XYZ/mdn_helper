@@ -8,46 +8,47 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         [v-cloak] { display: none; }
-        .cursor-pointer { cursor: pointer; }
-        /* Diff 語法高亮 */
-        .diff-added { background-color: #d1fae5; color: #065f46; } /* 綠色 */
-        .diff-removed { background-color: #fee2e2; color: #991b1b; } /* 紅色 */
-        .diff-header { color: #6b7280; background-color: #f3f4f6; } /* 灰色 */
+        .diff-added { background-color: #d1fae5; color: #065f46; display: block; }
+        .diff-removed { background-color: #fee2e2; color: #991b1b; display: block; }
+        .diff-header { color: #6b7280; background-color: #f3f4f6; display: block; }
+        .diff-normal { display: block; }
     </style>
 </head>
 <body class="bg-gray-100 text-gray-800 h-screen overflow-hidden">
 
 <div id="app" v-cloak class="flex flex-col h-full">
     
-    <div class="flex-1 overflow-y-auto p-6">
+    <div v-if="error" class="p-4 bg-red-100 text-red-700 text-center font-bold">
+        {{ error }}
+    </div>
+
+    <div class="flex-1 overflow-y-auto p-6" v-else>
         <header class="mb-8">
             <h1 class="text-3xl font-bold mb-2">MDN 翻譯同步狀態報告</h1>
             <p class="text-sm text-gray-500">生成時間: {{ generatedTime }}</p>
         </header>
 
         <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-            <div class="bg-white p-4 rounded shadow border-l-4 border-green-500 cursor-pointer hover:bg-green-50 transition" @click="filterStatus = 'up_to_date'">
+            <div class="bg-white p-4 rounded shadow border-l-4 border-green-500 cursor-pointer" @click="filterStatus = 'up_to_date'">
                 <div class="text-gray-500 text-sm">最新版本</div>
                 <div class="text-2xl font-bold">{{ stats.up_to_date }}</div>
             </div>
-            <div class="bg-white p-4 rounded shadow border-l-4 border-yellow-400 cursor-pointer hover:bg-yellow-50 transition" @click="filterStatus = 'outdated'">
-                <div class="text-gray-500 text-sm">需要更新 (含 Diff)</div>
+            <div class="bg-white p-4 rounded shadow border-l-4 border-yellow-400 cursor-pointer" @click="filterStatus = 'outdated'">
+                <div class="text-gray-500 text-sm">需要更新</div>
                 <div class="text-2xl font-bold">{{ stats.outdated }}</div>
             </div>
-            <div class="bg-white p-4 rounded shadow border-l-4 border-red-500 cursor-pointer hover:bg-red-50 transition" @click="filterStatus = 'missing_meta'">
+            <div class="bg-white p-4 rounded shadow border-l-4 border-red-500 cursor-pointer" @click="filterStatus = 'missing_meta'">
                 <div class="text-gray-500 text-sm">缺少 Meta</div>
                 <div class="text-2xl font-bold">{{ stats.missing_meta }}</div>
             </div>
-            <div class="bg-white p-4 rounded shadow border-l-4 border-gray-400 cursor-pointer hover:bg-gray-50 transition" @click="filterStatus = 'untranslated'">
+            <div class="bg-white p-4 rounded shadow border-l-4 border-gray-400 cursor-pointer" @click="filterStatus = 'untranslated'">
                 <div class="text-gray-500 text-sm">未翻譯</div>
                 <div class="text-2xl font-bold">{{ stats.untranslated }}</div>
             </div>
         </div>
 
-        <div class="bg-white p-4 rounded shadow mb-6 flex flex-col md:flex-row gap-4 items-center">
-            <div class="flex-1 w-full">
-                <input type="text" v-model="searchQuery" placeholder="搜尋檔案路徑..." class="w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
-            </div>
+        <div class="bg-white p-4 rounded shadow mb-6 flex gap-4">
+            <input type="text" v-model="searchQuery" placeholder="搜尋檔案路徑..." class="flex-1 border rounded px-3 py-2">
             <select v-model="filterStatus" class="border rounded px-3 py-2">
                 <option value="">所有狀態</option>
                 <option value="up_to_date">最新版本</option>
@@ -68,33 +69,19 @@
                     </tr>
                 </thead>
                 <tbody>
-                    <tr v-for="item in filteredData" :key="item.path" class="border-b hover:bg-gray-50 transition-colors">
-                        <td class="p-4 text-center align-middle">
+                    <tr v-for="item in filteredData" :key="item.path" class="border-b hover:bg-gray-50">
+                        <td class="p-4 text-center">
                             <div v-if="item.status === 'outdated'" 
-                               class="w-4 h-4 rounded-full bg-yellow-400 shadow-sm ring-2 ring-transparent hover:ring-yellow-200 cursor-pointer mx-auto transition-all hover:scale-125"
-                               @click="openDiff(item)"
-                               title="點擊預覽 Diff">
-                            </div>
-                            <div v-else 
-                                class="w-4 h-4 rounded-full mx-auto shadow-sm"
-                                :class="colorClass(item.status)" 
-                                :title="statusLabel(item.status)">
-                            </div>
+                               class="w-4 h-4 rounded-full bg-yellow-400 cursor-pointer mx-auto ring-2 ring-transparent hover:ring-yellow-200"
+                               @click="openDiff(item)" title="點擊預覽 Diff"></div>
+                            <div v-else class="w-4 h-4 rounded-full mx-auto" :class="colorClass(item.status)"></div>
                         </td>
                         <td class="p-4 font-mono text-sm">
-                            <a :href="item.url" target="_blank" class="text-blue-600 hover:underline block truncate max-w-lg">
-                                {{ item.path }}
-                            </a>
-                            <span v-if="item.status === 'outdated'" @click="openDiff(item)" class="text-xs text-yellow-600 hover:underline cursor-pointer mt-1 inline-block">
-                                [查看變更]
-                            </span>
+                            <a :href="item.url" target="_blank" class="text-blue-600 hover:underline block truncate max-w-lg">{{ item.path }}</a>
+                            <span v-if="item.status === 'outdated'" @click="openDiff(item)" class="text-xs text-yellow-600 hover:underline cursor-pointer">[查看變更]</span>
                         </td>
-                        <td class="p-4 font-mono text-xs text-gray-400">
-                            {{ item.sourceCommit ? item.sourceCommit.substring(0, 7) : '-' }}
-                        </td>
-                        <td class="p-4 font-mono text-xs text-gray-400">
-                            {{ item.currentCommit ? item.currentCommit.substring(0, 7) : '-' }}
-                        </td>
+                        <td class="p-4 font-mono text-xs text-gray-400">{{ item.sourceCommit?.substring(0, 7) || '-' }}</td>
+                        <td class="p-4 font-mono text-xs text-gray-400">{{ item.currentCommit?.substring(0, 7) || '-' }}</td>
                     </tr>
                 </tbody>
             </table>
@@ -103,99 +90,74 @@
 
     <div v-if="activeItem" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50" @click.self="closeDiff">
         <div class="bg-white rounded-lg shadow-xl w-full max-w-5xl h-[85vh] flex flex-col">
-            <div class="p-4 border-b flex justify-between items-center bg-gray-50 rounded-t-lg">
-                <div>
-                    <h3 class="font-bold text-lg text-gray-800">變更預覽</h3>
-                    <p class="text-sm text-gray-500 font-mono">{{ activeItem.path }}</p>
-                </div>
-                <button @click="closeDiff" class="text-gray-500 hover:text-gray-800 text-2xl font-bold px-2">&times;</button>
+            <div class="p-4 border-b flex justify-between bg-gray-50">
+                <h3 class="font-bold">變更預覽: {{ activeItem.path }}</h3>
+                <button @click="closeDiff" class="text-2xl font-bold text-gray-500">&times;</button>
             </div>
             
-            <div class="flex-1 overflow-auto p-4 bg-gray-50 font-mono text-sm leading-relaxed">
-                <div v-if="!activeItem.diff || activeItem.diff.trim() === ''" class="text-center text-gray-500 py-10">
-                    (無差異內容，或無法讀取 Diff)
-                </div>
-                <div v-else class="bg-white border rounded p-2 shadow-sm">
-                    <div v-for="(line, index) in activeItem.diff.split('\n')" :key="index" :class="getDiffLineClass(line)" class="whitespace-pre-wrap break-all px-2">
-                        {{ line }}
-                    </div>
+            <div class="flex-1 overflow-auto p-4 bg-gray-50 font-mono text-sm">
+                <div v-if="!activeItem.diff" class="text-center text-gray-500 py-10">(無 Diff 內容)</div>
+                <div v-else class="bg-white border rounded p-2 shadow-sm whitespace-pre-wrap">
+                    <span v-for="(line, i) in activeItem.diff.split('\n')" :key="i" :class="getDiffLineClass(line)">{{ line }}</span>
                 </div>
             </div>
 
-            <div class="p-4 border-t bg-gray-50 rounded-b-lg flex flex-col md:flex-row justify-between items-center gap-4">
-                
-                <div class="flex gap-2 w-full md:w-auto">
-                    <button 
-                        @click="copyDiff" 
-                        class="px-4 py-2 border border-gray-300 text-gray-700 rounded hover:bg-gray-100 text-sm transition-colors flex items-center gap-2">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-                        {{ copyText }}
-                    </button>
-
-                    <button 
-                        @click="copyPrompt" 
-                        class="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 text-sm font-semibold transition-colors flex items-center gap-2 shadow-sm">
-                        <svg v-if="!promptCopied" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
-                        <svg v-else xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                        {{ promptButtonText }}
-                    </button>
-                </div>
-
+            <div class="p-4 border-t bg-gray-50 flex justify-between items-center">
                 <div class="flex gap-2">
-                    <a :href="'https://github.com/mdn/content/commits/' + activeItem.currentCommit + '/files/en-us/' + activeItem.path" 
-                       target="_blank"
-                       class="px-4 py-2 text-blue-600 hover:bg-blue-50 rounded text-sm transition-colors">
-                        查看 GitHub 歷史
-                    </a>
-                    <button @click="closeDiff" class="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 text-sm transition-colors">
-                        關閉
+                    <button @click="copyDiff" class="px-4 py-2 border bg-white rounded hover:bg-gray-50 text-sm">{{ copyText }}</button>
+                    <button @click="copyPrompt" class="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 text-sm font-bold flex items-center gap-2">
+                        <span>✨</span> {{ promptButtonText }}
                     </button>
                 </div>
+                <button @click="closeDiff" class="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300 text-sm">關閉</button>
             </div>
         </div>
     </div>
 </div>
 
 <script>
-    // 這裡會被 audit.js 替換
-    // __INJECT_PROMPT__
-    
-    // 開發時的預設值
-    if (typeof injectedPrompt === 'undefined') {
-        var injectedPrompt = "請翻譯:\n\nDiff: {{DIFF}}\n\nContent: {{CONTENT}}";
-    }
-
     const { createApp } = Vue;
 
     createApp({
         data() {
             return {
                 rawData: [],
+                promptTemplate: '',
                 searchQuery: '',
                 filterStatus: '',
                 generatedTime: new Date().toLocaleString(),
                 activeItem: null,
-                // 按鈕狀態
-                copyText: '複製純 Diff',
-                promptButtonText: '複製 AI Prompt',
-                promptCopied: false,
-                promptTemplate: injectedPrompt
+                copyText: '複製 Diff',
+                promptButtonText: '複製 Prompt',
+                error: null
             }
         },
         async mounted() {
             try {
-                const res = await fetch('./data.json');
-                this.rawData = await res.json();
+                // 並行讀取資料與設定
+                const [dataRes, metaRes] = await Promise.all([
+                    fetch('./data.json'),
+                    fetch('./meta.json')
+                ]);
+
+                if (!dataRes.ok) throw new Error("無法讀取 data.json");
+                this.rawData = await dataRes.json();
+
+                if (metaRes.ok) {
+                    const meta = await metaRes.json();
+                    this.promptTemplate = meta.prompt || '';
+                } else {
+                    this.promptTemplate = "Diff: {{DIFF}}\nContent: {{CONTENT}}";
+                }
             } catch (e) {
-                console.error("無法讀取 data.json");
+                console.error(e);
+                this.error = "讀取資料失敗，請檢查 console 訊息。";
             }
         },
         computed: {
             stats() {
                 const s = { up_to_date: 0, outdated: 0, missing_meta: 0, untranslated: 0 };
-                this.rawData.forEach(item => {
-                    if (s[item.status] !== undefined) s[item.status]++;
-                });
+                this.rawData.forEach(item => { if (s[item.status] !== undefined) s[item.status]++; });
                 return s;
             },
             filteredData() {
@@ -207,55 +169,39 @@
             }
         },
         methods: {
-            statusLabel(status) { return { 'up_to_date': '最新版本', 'outdated': '需要更新', 'missing_meta': '缺少 Meta', 'untranslated': '未翻譯' }[status] || status; },
             colorClass(status) { return { 'up_to_date': 'bg-green-500', 'outdated': 'bg-yellow-400', 'missing_meta': 'bg-red-500', 'untranslated': 'bg-gray-300' }[status] || 'bg-gray-200'; },
             getDiffLineClass(line) {
                 if (line.startsWith('+')) return 'diff-added';
                 if (line.startsWith('-')) return 'diff-removed';
                 if (line.startsWith('@@')) return 'diff-header';
-                return '';
+                return 'diff-normal';
             },
-            openDiff(item) {
-                this.activeItem = item;
-                this.resetButtons();
-            },
-            closeDiff() {
-                this.activeItem = null;
-            },
-            resetButtons() {
-                this.copyText = '複製純 Diff';
-                this.promptButtonText = '複製 AI Prompt';
-                this.promptCopied = false;
-            },
+            openDiff(item) { this.activeItem = item; this.copyText = '複製 Diff'; this.promptButtonText = '複製 Prompt'; },
+            closeDiff() { this.activeItem = null; },
+            
             async copyDiff() {
                 if (!this.activeItem?.diff) return;
                 await navigator.clipboard.writeText(this.activeItem.diff);
-                this.copyText = '已複製！';
-                setTimeout(() => this.copyText = '複製純 Diff', 2000);
+                this.copyText = '已複製!';
+                setTimeout(() => this.copyText = '複製 Diff', 1500);
             },
+            
             async copyPrompt() {
-                const diffContent = (this.activeItem && this.activeItem.diff) 
-                    ? this.activeItem.diff 
-                    : '(無 Diff 內容)';
-                
-                const fileContent = (this.activeItem && this.activeItem.content)
-                    ? this.activeItem.content
-                    : '(無法讀取檔案內容)';
+                const diff = this.activeItem?.diff || '(無 Diff)';
+                const content = this.activeItem?.content || '(無內容)';
+                const path = this.activeItem?.path || '';
 
-                let promptText = this.promptTemplate
-                    .replace(/{{DIFF}}/g, diffContent)
-                    .replace(/{{CONTENT}}/g, fileContent)
-                    .replace(/{{PATH}}/g, this.activeItem ? this.activeItem.path : '');
-                
+                // [安全替換] 使用 split/join 避免 Regex 特殊字元($) 造成錯誤
+                let text = this.promptTemplate
+                    .split('{{DIFF}}').join(diff)
+                    .split('{{CONTENT}}').join(content)
+                    .split('{{PATH}}').join(path);
+
                 try {
-                    await navigator.clipboard.writeText(promptText);
-                    this.promptCopied = true;
-                    this.promptButtonText = '已複製 Prompt！';
-                    setTimeout(() => {
-                        this.promptCopied = false;
-                        this.promptButtonText = '複製 AI Prompt';
-                    }, 2000);
-                } catch (err) {
+                    await navigator.clipboard.writeText(text);
+                    this.promptButtonText = '已複製!';
+                    setTimeout(() => this.promptButtonText = '複製 Prompt', 1500);
+                } catch (e) {
                     alert('複製失敗');
                 }
             }
