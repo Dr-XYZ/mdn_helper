@@ -18,7 +18,6 @@ function getGitDiff(cwd, fromHash, toHash, filePath) {
         child.stdout.on('data', chunk => data += chunk);
         child.stderr.on('data', () => {}); 
         child.on('close', () => {
-            // 限制 30KB，避免 JSON 過大
             if (data.length > 30000) {
                 data = data.substring(0, 30000) + '\n... (差異過大，已截斷) ...';
             }
@@ -32,7 +31,7 @@ async function run() {
     console.time('執行時間');
     console.log(`[1/4] 開始比對... 目標語言: ${TARGET_LOCALE}`);
 
-    // 1. 建立英文版索引 (Stream)
+    // 1. 建立英文版索引
     const latestCommits = new Map();
     const gitLogProcess = spawn('git', [
         'log', '--format=::: %H', '--name-only', 'files/en-us'
@@ -72,12 +71,15 @@ async function run() {
                 sourceCommit: null,
                 currentCommit: currentHash,
                 diff: null,
-                content: null, // 用於 Prompt
+                content: null, 
                 url: `https://developer.mozilla.org/${TARGET_LOCALE}/docs/${relativePath.replace('.md', '').replace('/index', '')}`
             };
 
             try {
+                // [修改] 無論狀態如何，只要檔案存在就讀取內容
                 const fileContent = await fs.readFile(transFilePath, 'utf8');
+                item.content = fileContent; // 存入全文
+
                 const parsed = matter(fileContent);
                 const recordedCommit = parsed.data.l10n?.sourceCommit;
 
@@ -85,16 +87,17 @@ async function run() {
                     item.sourceCommit = recordedCommit;
                     if (item.sourceCommit === currentHash) {
                         item.status = 'up_to_date';
+                        // 最新版本通常沒有 Diff
                     } else {
                         item.status = 'outdated';
-                        // 僅對過期檔案抓取 Diff 與 Content
+                        // 只有過期才抓 Diff
                         item.diff = await getGitDiff(CONTENT_REPO, item.sourceCommit, item.currentCommit, srcFilePath);
-                        item.content = fileContent;
                     }
                 } else {
                     item.status = 'missing_meta';
                 }
             } catch (err) {
+                // 檔案不存在 (Untranslated)
                 item.status = 'untranslated';
             }
             return item;
@@ -106,23 +109,16 @@ async function run() {
 
     // 3. 輸出檔案
     await fs.ensureDir(OUTPUT_DIR);
-
-    // A. 寫入主資料
     await fs.writeFile(path.join(OUTPUT_DIR, 'data.json'), JSON.stringify(report, null, 2));
 
-    // B. 寫入 Prompt 設定檔 (meta.json) - 這是修正關鍵
     let promptContent = "請翻譯:\n\nDiff: {{DIFF}}\n\nContent: {{CONTENT}}";
     if (await fs.pathExists('prompt.txt')) {
         promptContent = await fs.readFile('prompt.txt', 'utf8');
-        console.log('已讀取 prompt.txt');
     }
     await fs.writeFile(path.join(OUTPUT_DIR, 'meta.json'), JSON.stringify({ prompt: promptContent }, null, 2));
 
-    // C. 複製網頁模板 (不做任何替換)
     if (await fs.pathExists('template.html')) {
         await fs.copy('template.html', path.join(OUTPUT_DIR, 'index.html'));
-    } else {
-        console.error('錯誤: 找不到 template.html');
     }
 
     console.log(`[4/4] 完成！生成 ${report.length} 筆資料。`);

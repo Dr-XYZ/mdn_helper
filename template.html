@@ -12,15 +12,22 @@
         .diff-removed { background-color: #fee2e2; color: #991b1b; display: block; }
         .diff-header { color: #6b7280; background-color: #f3f4f6; display: block; }
         .diff-normal { display: block; }
+        /* 讓所有燈號都有互動感 */
+        .status-dot {
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+        .status-dot:hover {
+            transform: scale(1.25);
+            box-shadow: 0 0 8px rgba(0,0,0,0.1);
+        }
     </style>
 </head>
 <body class="bg-gray-100 text-gray-800 h-screen overflow-hidden">
 
 <div id="app" v-cloak class="flex flex-col h-full">
     
-    <div v-if="error" class="p-4 bg-red-100 text-red-700 text-center font-bold">
-        {{ error }}
-    </div>
+    <div v-if="error" class="p-4 bg-red-100 text-red-700 text-center font-bold">{{ error }}</div>
 
     <div class="flex-1 overflow-y-auto p-6" v-else>
         <header class="mb-8">
@@ -29,19 +36,19 @@
         </header>
 
         <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-            <div class="bg-white p-4 rounded shadow border-l-4 border-green-500 cursor-pointer" @click="filterStatus = 'up_to_date'">
+            <div class="bg-white p-4 rounded shadow border-l-4 border-green-500 cursor-pointer hover:bg-green-50" @click="filterStatus = 'up_to_date'">
                 <div class="text-gray-500 text-sm">最新版本</div>
                 <div class="text-2xl font-bold">{{ stats.up_to_date }}</div>
             </div>
-            <div class="bg-white p-4 rounded shadow border-l-4 border-yellow-400 cursor-pointer" @click="filterStatus = 'outdated'">
+            <div class="bg-white p-4 rounded shadow border-l-4 border-yellow-400 cursor-pointer hover:bg-yellow-50" @click="filterStatus = 'outdated'">
                 <div class="text-gray-500 text-sm">需要更新</div>
                 <div class="text-2xl font-bold">{{ stats.outdated }}</div>
             </div>
-            <div class="bg-white p-4 rounded shadow border-l-4 border-red-500 cursor-pointer" @click="filterStatus = 'missing_meta'">
+            <div class="bg-white p-4 rounded shadow border-l-4 border-red-500 cursor-pointer hover:bg-red-50" @click="filterStatus = 'missing_meta'">
                 <div class="text-gray-500 text-sm">缺少 Meta</div>
                 <div class="text-2xl font-bold">{{ stats.missing_meta }}</div>
             </div>
-            <div class="bg-white p-4 rounded shadow border-l-4 border-gray-400 cursor-pointer" @click="filterStatus = 'untranslated'">
+            <div class="bg-white p-4 rounded shadow border-l-4 border-gray-400 cursor-pointer hover:bg-gray-50" @click="filterStatus = 'untranslated'">
                 <div class="text-gray-500 text-sm">未翻譯</div>
                 <div class="text-2xl font-bold">{{ stats.untranslated }}</div>
             </div>
@@ -71,14 +78,18 @@
                 <tbody>
                     <tr v-for="item in filteredData" :key="item.path" class="border-b hover:bg-gray-50">
                         <td class="p-4 text-center">
-                            <div v-if="item.status === 'outdated'" 
-                               class="w-4 h-4 rounded-full bg-yellow-400 cursor-pointer mx-auto ring-2 ring-transparent hover:ring-yellow-200"
-                               @click="openDiff(item)" title="點擊預覽 Diff"></div>
-                            <div v-else class="w-4 h-4 rounded-full mx-auto" :class="colorClass(item.status)"></div>
+                            <div 
+                                class="w-4 h-4 rounded-full mx-auto status-dot"
+                                :class="colorClass(item.status)"
+                                @click="openDiff(item)"
+                                :title="'狀態: ' + item.status + ' (點擊開啟詳情)'">
+                            </div>
                         </td>
                         <td class="p-4 font-mono text-sm">
                             <a :href="item.url" target="_blank" class="text-blue-600 hover:underline block truncate max-w-lg">{{ item.path }}</a>
-                            <span v-if="item.status === 'outdated'" @click="openDiff(item)" class="text-xs text-yellow-600 hover:underline cursor-pointer">[查看變更]</span>
+                            <span @click="openDiff(item)" class="text-xs text-gray-500 hover:text-blue-600 hover:underline cursor-pointer mt-1 inline-block">
+                                [開啟詳情]
+                            </span>
                         </td>
                         <td class="p-4 font-mono text-xs text-gray-400">{{ item.sourceCommit?.substring(0, 7) || '-' }}</td>
                         <td class="p-4 font-mono text-xs text-gray-400">{{ item.currentCommit?.substring(0, 7) || '-' }}</td>
@@ -91,25 +102,39 @@
     <div v-if="activeItem" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50" @click.self="closeDiff">
         <div class="bg-white rounded-lg shadow-xl w-full max-w-5xl h-[85vh] flex flex-col">
             <div class="p-4 border-b flex justify-between bg-gray-50">
-                <h3 class="font-bold">變更預覽: {{ activeItem.path }}</h3>
-                <button @click="closeDiff" class="text-2xl font-bold text-gray-500">&times;</button>
+                <div>
+                    <h3 class="font-bold">檔案詳情</h3>
+                    <p class="text-xs text-gray-500 font-mono">{{ activeItem.path }}</p>
+                </div>
+                <button @click="closeDiff" class="text-2xl font-bold text-gray-500 hover:text-black">&times;</button>
             </div>
             
             <div class="flex-1 overflow-auto p-4 bg-gray-50 font-mono text-sm">
-                <div v-if="!activeItem.diff" class="text-center text-gray-500 py-10">(無 Diff 內容)</div>
-                <div v-else class="bg-white border rounded p-2 shadow-sm whitespace-pre-wrap">
+                <div v-if="activeItem.diff" class="bg-white border rounded p-2 shadow-sm whitespace-pre-wrap mb-4">
+                    <div class="text-xs text-gray-400 mb-2 border-b pb-1">Git Diff 變更:</div>
                     <span v-for="(line, i) in activeItem.diff.split('\n')" :key="i" :class="getDiffLineClass(line)">{{ line }}</span>
+                </div>
+                <div v-else class="text-center text-gray-400 py-4 mb-4 border-2 border-dashed rounded">
+                    (此檔案無 Git Diff 變更紀錄)
+                </div>
+
+                <div v-if="activeItem.content" class="bg-white border rounded p-2 shadow-sm whitespace-pre-wrap text-gray-600 h-64 overflow-y-auto">
+                    <div class="text-xs text-gray-400 mb-2 border-b pb-1 sticky top-0 bg-white">目前翻譯內容 (預覽):</div>
+                    {{ activeItem.content }}
+                </div>
+                <div v-else class="text-center text-gray-400 py-4 border-2 border-dashed rounded">
+                    (無法讀取檔案內容，或檔案尚未翻譯)
                 </div>
             </div>
 
-            <div class="p-4 border-t bg-gray-50 flex justify-between items-center">
-                <div class="flex gap-2">
-                    <button @click="copyDiff" class="px-4 py-2 border bg-white rounded hover:bg-gray-50 text-sm">{{ copyText }}</button>
-                    <button @click="copyPrompt" class="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 text-sm font-bold flex items-center gap-2">
+            <div class="p-4 border-t bg-gray-50 flex flex-col md:flex-row justify-between items-center gap-2">
+                <div class="flex gap-2 w-full md:w-auto">
+                    <button v-if="activeItem.diff" @click="copyDiff" class="px-4 py-2 border bg-white rounded hover:bg-gray-50 text-sm flex-1 md:flex-none">{{ copyText }}</button>
+                    <button @click="copyPrompt" class="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 text-sm font-bold flex items-center gap-2 flex-1 md:flex-none justify-center">
                         <span>✨</span> {{ promptButtonText }}
                     </button>
                 </div>
-                <button @click="closeDiff" class="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300 text-sm">關閉</button>
+                <button @click="closeDiff" class="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300 text-sm w-full md:w-auto">關閉</button>
             </div>
         </div>
     </div>
@@ -134,15 +159,12 @@
         },
         async mounted() {
             try {
-                // 並行讀取資料與設定
                 const [dataRes, metaRes] = await Promise.all([
                     fetch('./data.json'),
                     fetch('./meta.json')
                 ]);
-
                 if (!dataRes.ok) throw new Error("無法讀取 data.json");
                 this.rawData = await dataRes.json();
-
                 if (metaRes.ok) {
                     const meta = await metaRes.json();
                     this.promptTemplate = meta.prompt || '';
@@ -187,11 +209,10 @@
             },
             
             async copyPrompt() {
-                const diff = this.activeItem?.diff || '(無 Diff)';
-                const content = this.activeItem?.content || '(無內容)';
+                const diff = this.activeItem?.diff || '(無 Diff 變更)';
+                const content = this.activeItem?.content || '(無檔案內容)';
                 const path = this.activeItem?.path || '';
 
-                // [安全替換] 使用 split/join 避免 Regex 特殊字元($) 造成錯誤
                 let text = this.promptTemplate
                     .split('{{DIFF}}').join(diff)
                     .split('{{CONTENT}}').join(content)
