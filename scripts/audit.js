@@ -9,6 +9,29 @@ const TRANS_REPO = './mdn-translated-content';
 const TARGET_LOCALE = 'zh-tw';
 const OUTPUT_DIR = './public';
 
+// [新增] 執行 Git Diff 的輔助函式
+function getGitDiff(cwd, fromHash, toHash, filePath) {
+    return new Promise((resolve) => {
+        // 指令: git diff oldHash...newHash -- files/en-us/path/to/file.md
+        const args = ['diff', `${fromHash}...${toHash}`, '--', filePath];
+        const child = spawn('git', args, { cwd });
+        
+        let data = '';
+        child.stdout.on('data', chunk => data += chunk);
+        child.stderr.on('data', () => {}); // 忽略錯誤輸出
+        
+        child.on('close', () => {
+            // 如果 diff 太大 (超過 20KB)，截斷它以免 JSON 爆掉
+            if (data.length > 20000) {
+                data = data.substring(0, 20000) + '\n... (差異過大，僅顯示前 20KB) ...';
+            }
+            resolve(data);
+        });
+        
+        child.on('error', () => resolve('')); // 發生錯誤回傳空字串
+    });
+}
+
 async function run() {
     console.time('執行時間');
     console.log(`開始比對... 目標語言: ${TARGET_LOCALE}`);
@@ -18,10 +41,7 @@ async function run() {
     
     const latestCommits = new Map();
     const gitLogProcess = spawn('git', [
-        'log', 
-        '--format=::: %H', 
-        '--name-only', 
-        'files/en-us'
+        'log', '--format=::: %H', '--name-only', 'files/en-us'
     ], { cwd: CONTENT_REPO });
 
     let currentHash = null;
@@ -49,7 +69,11 @@ async function run() {
     const report = [];
     const processingPromises = [];
 
-    for (const [srcFilePath, currentHash] of latestCommits) {
+    // 為了避免 git spawn 過多導致系統崩潰，我們使用簡單的隊列控制 (Chunking)
+    // 但為了代碼簡單，這裡用一般的 Promise.all，若檔案非常多(數萬)，建議分批處理
+    const entries = Array.from(latestCommits.entries());
+    
+    for (const [srcFilePath, currentHash] of entries) {
         if (!srcFilePath.endsWith('.md')) continue;
 
         processingPromises.push((async () => {
@@ -61,22 +85,25 @@ async function run() {
                 status: 'untranslated',
                 sourceCommit: null,
                 currentCommit: currentHash,
+                diff: null, // [新增] 存放 Diff 內容
                 url: `https://developer.mozilla.org/${TARGET_LOCALE}/docs/${relativePath.replace('.md', '').replace('/index', '')}`
             };
 
             try {
                 const content = await fs.readFile(transFilePath, 'utf8');
                 const parsed = matter(content);
-                
-                // --- 修正重點開始 ---
-                // 讀取 l10n 屬性下的 sourceCommit
-                // 使用 ?. (Optional Chaining) 避免舊檔案沒有 l10n 造成報錯
                 const recordedCommit = parsed.data.l10n?.sourceCommit;
-                // --- 修正重點結束 ---
 
                 if (recordedCommit) {
                     item.sourceCommit = recordedCommit;
-                    item.status = (item.sourceCommit === currentHash) ? 'up_to_date' : 'outdated';
+                    if (item.sourceCommit === currentHash) {
+                        item.status = 'up_to_date';
+                    } else {
+                        item.status = 'outdated';
+                        // [新增] 如果過期，抓取 Diff
+                        // 注意：傳入的是 mdn-content 內的完整路徑 (srcFilePath)
+                        item.diff = await getGitDiff(CONTENT_REPO, item.sourceCommit, item.currentCommit, srcFilePath);
+                    }
                 } else {
                     item.status = 'missing_meta';
                 }
@@ -88,7 +115,6 @@ async function run() {
         })());
     }
 
-    // 3. 並發執行
     const results = await Promise.all(processingPromises);
     report.push(...results);
 
