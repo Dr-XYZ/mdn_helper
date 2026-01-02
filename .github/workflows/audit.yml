@@ -1,0 +1,63 @@
+name: MDN Translation Audit
+
+on:
+  workflow_dispatch: # 允許手動觸發
+  schedule:
+    - cron: '0 0 * * 0' # 每週日執行一次 (可自行調整)
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Audit Tool
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Dependencies
+        run: npm install
+
+      # Clone MDN Content (Source)
+      # 使用 depth 1 減少下載量，但要確保能獲取足夠的 git log 資訊
+      # 若腳本依賴 git log 查看歷史，可能需要 depth: 0 或指定深度，
+      # 但因為我們只需要比較"當前 HEAD" hash，depth 1 足以獲取當前檔案的 blob hash，
+      # 若要準確獲取"最後修改該檔案的 commit hash"，最好是 fetch-depth: 0 (完整歷史)
+      # 為了效能與 GitHub Runner 限制，我們先嘗試 depth: 1，
+      # 注意：如果 simple-git log 拿不到歷史，請改為 fetch-depth: 0
+      - name: Checkout MDN Content
+        uses: actions/checkout@v4
+        with:
+          repository: mdn/content
+          path: mdn-content
+          fetch-depth: 0 # 需要完整歷史來準確獲取每個檔案的 last commit
+
+      # Clone MDN Translated Content
+      - name: Checkout MDN Translated Content
+        uses: actions/checkout@v4
+        with:
+          repository: mdn/translated-content
+          path: mdn-translated-content
+          fetch-depth: 1 # 翻譯檔我們只需要讀取當前內容
+
+      - name: Run Audit Script
+        run: npm run audit
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: './public'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

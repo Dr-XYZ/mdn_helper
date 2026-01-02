@@ -1,0 +1,13 @@
+{
+  "name": "mdn-audit-tool",
+  "version": "1.0.0",
+  "scripts": {
+    "audit": "node scripts/audit.js"
+  },
+  "dependencies": {
+    "glob": "^10.3.10",
+    "gray-matter": "^4.0.3",
+    "simple-git": "^3.22.0",
+    "fs-extra": "^11.2.0"
+  }
+}

@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MDN 翻譯狀態報告</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        [v-cloak] { display: none; }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800">
+
+<div id="app" v-cloak class="container mx-auto p-6">
+    <header class="mb-8">
+        <h1 class="text-3xl font-bold mb-2">MDN 翻譯同步狀態報告</h1>
+        <p class="text-gray-600">比對來源: mdn/content vs mdn/translated-content</p>
+        <p class="text-sm text-gray-500">生成時間: {{ generatedTime }}</p>
+    </header>
+
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+        <div class="bg-white p-4 rounded shadow border-l-4 border-green-500 cursor-pointer hover:bg-green-50" @click="filterStatus = 'up_to_date'">
+            <div class="text-gray-500 text-sm">最新版本 (Up to date)</div>
+            <div class="text-2xl font-bold">{{ stats.up_to_date }}</div>
+        </div>
+        <div class="bg-white p-4 rounded shadow border-l-4 border-yellow-500 cursor-pointer hover:bg-yellow-50" @click="filterStatus = 'outdated'">
+            <div class="text-gray-500 text-sm">需要更新 (Outdated)</div>
+            <div class="text-2xl font-bold">{{ stats.outdated }}</div>
+        </div>
+        <div class="bg-white p-4 rounded shadow border-l-4 border-red-500 cursor-pointer hover:bg-red-50" @click="filterStatus = 'missing_meta'">
+            <div class="text-gray-500 text-sm">缺少 Meta (No SourceCommit)</div>
+            <div class="text-2xl font-bold">{{ stats.missing_meta }}</div>
+        </div>
+        <div class="bg-white p-4 rounded shadow border-l-4 border-gray-500 cursor-pointer hover:bg-gray-50" @click="filterStatus = 'untranslated'">
+            <div class="text-gray-500 text-sm">未翻譯 (Untranslated)</div>
+            <div class="text-2xl font-bold">{{ stats.untranslated }}</div>
+        </div>
+    </div>
+
+    <div class="bg-white p-4 rounded shadow mb-6 flex flex-col md:flex-row gap-4 items-center">
+        <div class="flex-1 w-full">
+            <input type="text" v-model="searchQuery" placeholder="搜尋檔案路徑..." class="w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+        </div>
+        <select v-model="filterStatus" class="border rounded px-3 py-2">
+            <option value="">所有狀態</option>
+            <option value="up_to_date">最新版本</option>
+            <option value="outdated">需要更新</option>
+            <option value="missing_meta">缺少 Meta</option>
+            <option value="untranslated">未翻譯</option>
+        </select>
+        <div class="text-sm text-gray-500">
+            顯示 {{ filteredData.length }} / {{ rawData.length }} 筆
+        </div>
+    </div>
+
+    <div class="bg-white rounded shadow overflow-x-auto">
+        <table class="w-full text-left border-collapse">
+            <thead>
+                <tr class="bg-gray-50 border-b">
+                    <th class="p-4 font-semibold text-gray-600">狀態</th>
+                    <th class="p-4 font-semibold text-gray-600">檔案路徑</th>
+                    <th class="p-4 font-semibold text-gray-600">Source Commit</th>
+                    <th class="p-4 font-semibold text-gray-600">Current Commit</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr v-for="item in filteredData" :key="item.path" class="border-b hover:bg-gray-50">
+                    <td class="p-4">
+                        <span :class="badgeClass(item.status)" class="px-2 py-1 rounded text-xs font-bold uppercase">
+                            {{ statusLabel(item.status) }}
+                        </span>
+                    </td>
+                    <td class="p-4 font-mono text-sm">
+                        <a :href="item.url" target="_blank" class="text-blue-600 hover:underline">{{ item.path }}</a>
+                    </td>
+                    <td class="p-4 font-mono text-xs text-gray-500">
+                        {{ item.sourceCommit ? item.sourceCommit.substring(0, 7) : '-' }}
+                    </td>
+                    <td class="p-4 font-mono text-xs text-gray-500">
+                        {{ item.currentCommit ? item.currentCommit.substring(0, 7) : '-' }}
+                    </td>
+                </tr>
+                <tr v-if="filteredData.length === 0">
+                    <td colspan="4" class="p-8 text-center text-gray-500">沒有符合條件的資料</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    const { createApp } = Vue;
+
+    createApp({
+        data() {
+            return {
+                rawData: [],
+                searchQuery: '',
+                filterStatus: '',
+                generatedTime: new Date().toLocaleString()
+            }
+        },
+        async mounted() {
+            try {
+                const res = await fetch('./data.json');
+                this.rawData = await res.json();
+            } catch (e) {
+                console.error("無法讀取 data.json");
+            }
+        },
+        computed: {
+            stats() {
+                const s = { up_to_date: 0, outdated: 0, missing_meta: 0, untranslated: 0 };
+                this.rawData.forEach(item => {
+                    if (s[item.status] !== undefined) s[item.status]++;
+                });
+                return s;
+            },
+            filteredData() {
+                return this.rawData.filter(item => {
+                    const matchSearch = item.path.toLowerCase().includes(this.searchQuery.toLowerCase());
+                    const matchStatus = this.filterStatus ? item.status === this.filterStatus : true;
+                    return matchSearch && matchStatus;
+                });
+            }
+        },
+        methods: {
+            statusLabel(status) {
+                const map = {
+                    'up_to_date': '最新',
+                    'outdated': '需更新',
+                    'missing_meta': '無 Meta',
+                    'untranslated': '未翻譯'
+                };
+                return map[status] || status;
+            },
+            badgeClass(status) {
+                const map = {
+                    'up_to_date': 'bg-green-100 text-green-800',
+                    'outdated': 'bg-yellow-100 text-yellow-800',
+                    'missing_meta': 'bg-red-100 text-red-800',
+                    'untranslated': 'bg-gray-100 text-gray-800'
+                };
+                return map[status] || 'bg-gray-100';
+            }
+        }
+    }).mount('#app');
+</script>
+</body>
+</html>
