@@ -10,9 +10,9 @@
         [v-cloak] { display: none; }
         .cursor-pointer { cursor: pointer; }
         /* Diff 語法高亮 */
-        .diff-added { background-color: #d1fae5; color: #065f46; }
-        .diff-removed { background-color: #fee2e2; color: #991b1b; }
-        .diff-header { color: #6b7280; background-color: #f3f4f6; }
+        .diff-added { background-color: #d1fae5; color: #065f46; } /* 綠色 */
+        .diff-removed { background-color: #fee2e2; color: #991b1b; } /* 紅色 */
+        .diff-header { color: #6b7280; background-color: #f3f4f6; } /* 灰色 */
     </style>
 </head>
 <body class="bg-gray-100 text-gray-800 h-screen overflow-hidden">
@@ -122,33 +122,49 @@
                 </div>
             </div>
 
-            <div class="p-4 border-t bg-gray-50 rounded-b-lg flex justify-between items-center">
-                <div class="flex gap-2">
+            <div class="p-4 border-t bg-gray-50 rounded-b-lg flex flex-col md:flex-row justify-between items-center gap-4">
+                
+                <div class="flex gap-2 w-full md:w-auto">
                     <button 
                         @click="copyDiff" 
-                        class="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 text-sm font-semibold transition-colors flex items-center gap-2">
-                        <svg v-if="!copySuccess" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-                        <svg v-else xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                        {{ copyButtonText }}
+                        class="px-4 py-2 border border-gray-300 text-gray-700 rounded hover:bg-gray-100 text-sm transition-colors flex items-center gap-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                        {{ copyText }}
                     </button>
-                    
-                    <a :href="'https://github.com/mdn/content/commits/' + activeItem.currentCommit + '/files/en-us/' + activeItem.path" 
-                       target="_blank"
-                       class="px-4 py-2 border border-gray-300 text-gray-700 rounded hover:bg-gray-100 text-sm transition-colors">
-                        查看完整歷史
-                    </a>
+
+                    <button 
+                        @click="copyPrompt" 
+                        class="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 text-sm font-semibold transition-colors flex items-center gap-2 shadow-sm">
+                        <svg v-if="!promptCopied" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                        <svg v-else xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                        {{ promptButtonText }}
+                    </button>
                 </div>
 
-                <button @click="closeDiff" class="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 text-sm transition-colors">
-                    關閉
-                </button>
+                <div class="flex gap-2">
+                    <a :href="'https://github.com/mdn/content/commits/' + activeItem.currentCommit + '/files/en-us/' + activeItem.path" 
+                       target="_blank"
+                       class="px-4 py-2 text-blue-600 hover:bg-blue-50 rounded text-sm transition-colors">
+                        查看 GitHub 歷史
+                    </a>
+                    <button @click="closeDiff" class="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 text-sm transition-colors">
+                        關閉
+                    </button>
+                </div>
             </div>
         </div>
     </div>
-
 </div>
 
 <script>
+    // 這裡會被 audit.js 替換
+    // __INJECT_PROMPT__
+    
+    // 開發時的預設值
+    if (typeof injectedPrompt === 'undefined') {
+        var injectedPrompt = "請翻譯:\n\nDiff: {{DIFF}}\n\nContent: {{CONTENT}}";
+    }
+
     const { createApp } = Vue;
 
     createApp({
@@ -159,8 +175,11 @@
                 filterStatus: '',
                 generatedTime: new Date().toLocaleString(),
                 activeItem: null,
-                copyButtonText: '複製 Diff',
-                copySuccess: false
+                // 按鈕狀態
+                copyText: '複製純 Diff',
+                promptButtonText: '複製 AI Prompt',
+                promptCopied: false,
+                promptTemplate: injectedPrompt
             }
         },
         async mounted() {
@@ -188,56 +207,56 @@
             }
         },
         methods: {
-            statusLabel(status) {
-                return {
-                    'up_to_date': '最新版本',
-                    'outdated': '需要更新',
-                    'missing_meta': '缺少 Meta',
-                    'untranslated': '未翻譯'
-                }[status] || status;
-            },
-            colorClass(status) {
-                return {
-                    'up_to_date': 'bg-green-500',
-                    'outdated': 'bg-yellow-400',
-                    'missing_meta': 'bg-red-500',
-                    'untranslated': 'bg-gray-300'
-                }[status] || 'bg-gray-200';
-            },
-            openDiff(item) {
-                this.activeItem = item;
-                // 重置複製按鈕狀態
-                this.copyButtonText = '複製 Diff';
-                this.copySuccess = false;
-            },
-            closeDiff() {
-                this.activeItem = null;
-            },
+            statusLabel(status) { return { 'up_to_date': '最新版本', 'outdated': '需要更新', 'missing_meta': '缺少 Meta', 'untranslated': '未翻譯' }[status] || status; },
+            colorClass(status) { return { 'up_to_date': 'bg-green-500', 'outdated': 'bg-yellow-400', 'missing_meta': 'bg-red-500', 'untranslated': 'bg-gray-300' }[status] || 'bg-gray-200'; },
             getDiffLineClass(line) {
                 if (line.startsWith('+')) return 'diff-added';
                 if (line.startsWith('-')) return 'diff-removed';
                 if (line.startsWith('@@')) return 'diff-header';
                 return '';
             },
-            // [新增] 複製功能
+            openDiff(item) {
+                this.activeItem = item;
+                this.resetButtons();
+            },
+            closeDiff() {
+                this.activeItem = null;
+            },
+            resetButtons() {
+                this.copyText = '複製純 Diff';
+                this.promptButtonText = '複製 AI Prompt';
+                this.promptCopied = false;
+            },
             async copyDiff() {
-                if (!this.activeItem || !this.activeItem.diff) return;
+                if (!this.activeItem?.diff) return;
+                await navigator.clipboard.writeText(this.activeItem.diff);
+                this.copyText = '已複製！';
+                setTimeout(() => this.copyText = '複製純 Diff', 2000);
+            },
+            async copyPrompt() {
+                const diffContent = (this.activeItem && this.activeItem.diff) 
+                    ? this.activeItem.diff 
+                    : '(無 Diff 內容)';
+                
+                const fileContent = (this.activeItem && this.activeItem.content)
+                    ? this.activeItem.content
+                    : '(無法讀取檔案內容)';
+
+                let promptText = this.promptTemplate
+                    .replace(/{{DIFF}}/g, diffContent)
+                    .replace(/{{CONTENT}}/g, fileContent)
+                    .replace(/{{PATH}}/g, this.activeItem ? this.activeItem.path : '');
                 
                 try {
-                    await navigator.clipboard.writeText(this.activeItem.diff);
-                    
-                    // UI 回饋
-                    this.copySuccess = true;
-                    this.copyButtonText = '已複製！';
-                    
-                    // 2秒後恢復
+                    await navigator.clipboard.writeText(promptText);
+                    this.promptCopied = true;
+                    this.promptButtonText = '已複製 Prompt！';
                     setTimeout(() => {
-                        this.copySuccess = false;
-                        this.copyButtonText = '複製 Diff';
+                        this.promptCopied = false;
+                        this.promptButtonText = '複製 AI Prompt';
                     }, 2000);
                 } catch (err) {
-                    console.error('複製失敗:', err);
-                    alert('複製失敗，請手動複製。');
+                    alert('複製失敗');
                 }
             }
         }

@@ -1,0 +1,286 @@
+<Temperature = 0>
+
+# MDN 英文文件 → 繁體中文（臺灣）翻譯任務 Prompt
+
+## 一、任務說明
+
+你的任務是將 **官方 MDN 英文文件** 翻譯為 **繁體中文（臺灣）**。
+
+流程如下：
+
+1. 你會先取得完整英文原文，以掌握整體語境。
+2. 接著會收到 **Markdown 格式的英文文本**。
+3. 請在**不改變原始 Markdown 結構**的前提下，將指定內容翻譯為 **Markdown 格式的繁體中文（臺灣）**。
+
+### 翻譯基本原則
+
+* **完全依照原文格式翻譯**
+* **不得自行新增、刪除或調整任何 Markdown 語法、巨集或結構**
+* **不**須**附註原文**
+* **翻譯所有能翻譯的東西**
+* **勿更改程式碼排版**
+* 翻譯需同時兼顧：
+
+  * 語境正確
+  * 用詞用字規範（見第二、三節）
+  * 中文語法自然通順（見第四節）
+
+---
+
+## 二、用詞與標點規範
+
+### 標點符號
+
+* 中文句子：使用**全形標點符號**
+* 英文句子與 Markdown 語法：維持**半形標點符號**
+
+### 語意轉換原則
+
+* 英文常以破折號或關係子句表達修飾語，中文翻譯時：
+
+  * **避免照搬**
+  * 改用：
+
+    * 全形括號（）
+    * 或調整為中文慣用的修飾語順序（主詞在後）
+
+---
+
+## 三、術語表（強制遵循）
+
+所有專有名詞必須依下列對照表翻譯。
+格式為：
+
+`<英文> -> <繁體中文（臺灣）>`
+
+```
+\"\" -> 「」(雙引號改成中文引號)
+( ) -> （ ）
+, -> ，
+. -> 。
+Browser compatibility -> 瀏覽器相容性
+Examples -> 範例
+Formal definition -> 形式定義
+Formal syntax -> 形式語法
+See also -> 參見
+Specifications -> 規範
+video -> 視訊
+audio -> 音訊
+component -> 元件
+custom -> 自訂
+support -> 支援（實際行動的；意圖或精神層面則為「支持」）
+network -> 網路
+context -> 上下文
+code -> 程式碼
+source code -> 原始碼
+programming -> 程式設計／程設
+config/configuration -> 組態
+(browser) extension -> 套件／擴充功能
+plugin -> 外掛
+(file) extension -> 副檔名
+array -> 陣列
+object -> 物件
+[!NOTE] -> [!NOTE]
+Attributes -> 屬性
+Technical summary -> 技術摘要
+Try it -> 嘗試一下
+Accessibility concerns -> 無障礙議題
+Content categories -> 內容類型
+Permitted content -> 允許內容
+Tag omission -> 標籤省略
+Permitted parents -> 允許的父元素
+Implicit ARIA role -> 隱含的 ARIA 角色
+Permitted ARIA roles -> 允許的 ARIA 角色
+DOM interface -> DOM 介面
+phrasing content -> 段落型內容
+Palpable content -> 捫及內容
+Interactive content -> 互動型內容
+Embedded content -> 嵌入型內容
+Sectioning content -> 章節型內容
+Flow content -> 流內容
+Transparent content model -> 透明內容模型
+global attributes -> 全域屬性
+No corresponding role -> 沒有相對應的角色
+string -> 字串
+column -> 欄
+boolean -> 布林
+boolean value -> 布林值
+declarations -> 宣告
+client -> 用戶／用戶端
+character -> 字元
+information -> 訊息
+set -> 設定
+metadata -> 後設資料
+enumerated -> 枚舉
+document -> 文件
+glossary -> 術語
+tutorial -> 教學
+rendering engine -> 繪製引擎
+render -> 算繪
+constructor -> 建構子
+return -> 回傳
+initiate -> 初始化
+throw -> 拋出
+create -> 建立
+hello world -> 你好世界
+exception -> 例外
+component -> 組件
+repository -> 倉儲
+viewport -> 視區
+web -> web（作為專有名詞或複合詞前綴時保留原文）
+scheme -> 方案
+argument -> 引數
+at-rule / At-rule -> at 規則／At 規則
+pseudo-classes -> 偽類
+event bubble -> 事件冒泡
+layout -> 佈局
+instance -> 實例
+universal time -> 世界協調時間
+```
+
+---
+
+## 四、語法與格式特殊規則
+
+### 1. 語態
+
+* 優先使用**主動語態**
+* 避免直譯英文被動語態與倒裝句
+* 避免濫用「被」
+
+---
+
+### 2. 空白規則
+
+* 中文與中文：**不加空白**
+* 中文與英文：**需加空白**
+* 中文與全形標點：不加空白
+* **若超連結前後皆為中文（忽略連結內英文），不可加空白**
+
+範例（正確）：
+
+1. 參見 [google 官方文件](google.com)以取得更多資訊。
+2. 你可以在[如何貢獻](/zh-TW/docs/MDN/Contribute)得知如何改善文件。
+3. 使用 [HTTP](/zh-TW/docs/Web/HTTP) 發送是不安全的。
+4. 在[我們的 github](https://github.com/mdn)中可以找到更多程式碼。
+
+---
+
+### 3. MDN 站內連結
+
+* 所有 MDN 內部連結語系需改為 `/zh-TW`
+* 外部連結保持原樣
+
+---
+
+### 4. 複數處理
+
+* 中文翻譯中**不需保留英文複數形式**
+* 未翻譯的英文名詞亦同
+
+---
+
+### 5. 代名詞
+
+* 文件正文中：
+
+  * `you` 一律翻譯為「你」
+  * 不使用「您」
+
+---
+
+### 6. 換行規則
+
+* 單一換行（`\n`）：視為同段落，不應斷行
+* 連續兩個換行（`\n\n`）：表示新段落
+* 同段落文字需連續書寫，不插入多餘空格
+
+---
+
+### 7. 後設資料（Metadata）
+
+* 僅翻譯「標題值」
+* 關鍵字（keywords）不翻譯
+
+---
+
+### 8. Markdown 規則
+
+* Markdown 語法使用半形標點
+* 清單格式：
+
+  * `- `
+  * `1. `
+* 空格一律為 **1 個半形空格**
+
+---
+
+### 9. 程式碼區塊
+
+* 程式碼本體、關鍵字、變數名稱：**保留原文**
+* 下列內容需翻譯：
+
+  * 註解
+  * 輸出文字
+  * 字串內容（若具說明性）
+
+---
+
+### 10. 超連結錨點（Anchor）
+
+* 錨點文字需翻譯為繁體中文
+* 規則：
+
+  * 全部小寫
+  * 空格改為底線 `_`
+
+---
+
+### 11. 不附註英文原文
+
+* 翻譯時**不需以括號補充英文原文**
+
+❌ 錯誤
+如果發現行動數據連線（cellular connection）……
+
+✅ 正確
+如果發現行動數據連線……
+
+---
+
+### 12. Tab 與括號
+
+* Tab 一律視為 **兩個半形空格**
+* 文本括號一律使用 **全形括號（ ）**
+
+---
+
+## 五、輸出格式
+
+* 輸出內容為：**完整翻譯後的 Markdown 文件**
+* 因文件可能包含程式碼區塊：
+
+  * **最外層請使用四個反引號 ```` 包覆全文**
+
+---
+
+## 六、品質檢查（必須完成）
+
+翻譯完成後，請逐項確認：
+
+1. 術語是否完全符合術語表
+2. 標點符號是否正確使用全形／半形
+3. 是否以主動語態為主，避免不自然被動句
+4. 空白是否符合規範，特別是超連結前後
+5. MDN 站內連結是否轉為 `/zh-TW`
+6. 程式碼區塊內可翻譯內容是否已翻譯，且未破壞程式碼
+
+---
+
+仔細思考你理解的翻譯規範後、根據規範翻譯。
+
+
+{{DIFF}}
+
+{{CONTENT}}
+
