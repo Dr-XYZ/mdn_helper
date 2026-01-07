@@ -9,30 +9,20 @@ const TRANS_REPO = './mdn-translated-content';
 const TARGET_LOCALE = 'zh-tw';
 const OUTPUT_DIR = './public';
 
-// --- 新增輔助函式: 檢查檔案是否存在於某個 Commit ---
+// --- 輔助函式: 檢查檔案是否存在於某個 Commit ---
 function checkFileExists(cwd, commitHash, filePath) {
     return new Promise((resolve) => {
-        // git cat-file -e 檢查物件是否存在，回傳 0 代表存在
         const child = spawn('git', ['cat-file', '-e', `${commitHash}:${filePath}`], { cwd });
-        child.on('close', (code) => {
-            resolve(code === 0);
-        });
+        child.on('close', (code) => resolve(code === 0));
     });
 }
 
-// --- 新增輔助函式: 使用 --follow 找出舊檔名 ---
+// --- 輔助函式: 使用 --follow 找出舊檔名 ---
 function findRenamedSource(cwd, fromHash, toHash, currentFilePath) {
     return new Promise((resolve) => {
-        // 使用 git log --follow 列出該檔案的歷史路徑
-        // 取最後一行 (最舊的紀錄) 即為該區間開始時的檔名
         const args = [
-            'log',
-            '--follow',
-            '--name-only',
-            '--format=', // 不輸出 commit 資訊，只留檔名
-            `${fromHash}..${toHash}`,
-            '--',
-            currentFilePath
+            'log', '--follow', '--name-only', '--format=',
+            `${fromHash}..${toHash}`, '--', currentFilePath
         ];
         
         const child = spawn('git', args, { cwd });
@@ -40,54 +30,37 @@ function findRenamedSource(cwd, fromHash, toHash, currentFilePath) {
         child.stdout.on('data', chunk => data += chunk);
         child.on('close', () => {
             const lines = data.trim().split('\n').filter(line => line.trim() !== '');
-            if (lines.length > 0) {
-                // 取最後一行 (時間軸上最接近 fromHash 的檔名)
-                resolve(lines[lines.length - 1].trim());
-            } else {
-                resolve(null);
-            }
+            // 取最後一行 (時間軸上最接近 fromHash 的檔名)
+            resolve(lines.length > 0 ? lines[lines.length - 1].trim() : null);
         });
         child.on('error', () => resolve(null));
     });
 }
 
-// --- 修改後的 Git Diff ---
+// --- Git Diff (支援 Rename) ---
 async function getGitDiff(cwd, fromHash, toHash, filePath) {
-    // 1. 先判斷在舊的 Commit 中，該路徑是否存在
     let oldPath = filePath;
     const existsAtOld = await checkFileExists(cwd, fromHash, filePath);
 
     if (!existsAtOld) {
-        // 2. 如果舊 Commit 沒這個檔名，嘗試偵測是否為改名 (Rename)
-        // console.log(`偵測到檔案可能已更名: ${filePath}`);
         const detectedOldPath = await findRenamedSource(cwd, fromHash, toHash, filePath);
-        
-        if (detectedOldPath) {
-            oldPath = detectedOldPath;
-            // console.log(`  -> 追蹤到舊檔名為: ${oldPath}`);
-        } else {
-            // 真的找不到 (可能是全新檔案)，保持原樣，Diff 會顯示全綠新增
-        }
+        if (detectedOldPath) oldPath = detectedOldPath;
     }
 
-    // 3. 使用 <commit>:<path> 語法進行精準比對
-    // 這樣即使檔名不同，Git 也能比較內容差異
     return new Promise((resolve) => {
+        // 使用 blob hash 比對 (fromHash:path)
         const args = ['diff', `${fromHash}:${oldPath}`, `${toHash}:${filePath}`];
         const child = spawn('git', args, { cwd });
         let data = '';
         
         child.stdout.on('data', chunk => data += chunk);
         child.stderr.on('data', () => {}); 
-        
         child.on('close', () => {
             if (data.length > 30000) {
                 data = data.substring(0, 30000) + '\n... (差異過大，已截斷) ...';
             }
-            // 如果比對失敗(例如舊檔真的不存在)，通常會沒輸出或報錯，這裡回傳空字串或 data
             resolve(data || '(無差異或全新檔案)');
         });
-        
         child.on('error', () => resolve('Error generating diff'));
     });
 }
@@ -98,9 +71,7 @@ async function run() {
 
     // 1. 建立英文版索引
     const latestCommits = new Map();
-    const gitLogProcess = spawn('git', [
-        'log', '--format=::: %H', '--name-only', 'files/en-us'
-    ], { cwd: CONTENT_REPO });
+    const gitLogProcess = spawn('git', ['log', '--format=::: %H', '--name-only', 'files/en-us'], { cwd: CONTENT_REPO });
 
     let currentHash = null;
     let lineBuffer = '';
@@ -131,8 +102,16 @@ async function run() {
             const transFilePath = path.join(TRANS_REPO, 'files', TARGET_LOCALE, relativePath);
             const fullSrcPath = path.join(CONTENT_REPO, srcFilePath);
             
+            // 取得檔案大小
+            let fileSize = 0;
+            try {
+                const stats = await fs.stat(fullSrcPath);
+                fileSize = stats.size;
+            } catch (e) { fileSize = 0; }
+
             const item = {
                 path: relativePath,
+                size: fileSize,
                 status: 'untranslated',
                 sourceCommit: null,
                 currentCommit: currentHash,
@@ -148,14 +127,12 @@ async function run() {
 
                 if (recordedCommit) {
                     item.sourceCommit = recordedCommit;
-                    
                     if (item.sourceCommit === currentHash) {
                         item.status = 'up_to_date';
                         item.content = transContent;
                     } else {
                         item.status = 'outdated';
                         item.content = transContent;
-                        // [重要] 這裡呼叫改進後的 getGitDiff
                         item.diff = await getGitDiff(CONTENT_REPO, item.sourceCommit, item.currentCommit, srcFilePath);
                     }
                 } else {
@@ -187,6 +164,7 @@ async function run() {
     }
     await fs.writeFile(path.join(OUTPUT_DIR, 'meta.json'), JSON.stringify({ prompt: promptContent }, null, 2));
 
+    // 如果目錄下有 template.html，複製過去；否則請確保手動建立 template.html
     if (await fs.pathExists('template.html')) {
         await fs.copy('template.html', path.join(OUTPUT_DIR, 'index.html'));
     }

@@ -1,66 +1,95 @@
 <!DOCTYPE html>
-<html lang="zh-TW">
+<html lang="zh-TW" class="transition-colors duration-300">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MDN 翻譯狀態報告</title>
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        // 設定 Tailwind 使用 class 模式切換暗黑模式
+        tailwind.config = {
+            darkMode: 'class',
+        }
+    </script>
     <style>
         [v-cloak] { display: none; }
+        
+        /* 基礎 Diff 樣式 (Light Mode) */
         .diff-added { background-color: #d1fae5; color: #065f46; display: block; }
         .diff-removed { background-color: #fee2e2; color: #991b1b; display: block; }
         .diff-header { color: #6b7280; background-color: #f3f4f6; display: block; }
-        .diff-normal { display: block; }
-        .status-dot {
-            transition: all 0.2s;
-            cursor: pointer;
-        }
-        .status-dot:hover {
-            transform: scale(1.25);
-            box-shadow: 0 0 8px rgba(0,0,0,0.1);
-        }
-        /* --- [修改] Checkbox 樣式優化 --- */
-        input[type="checkbox"] {
-            transform: scale(1.2);
-            cursor: pointer;
-        }
+        .diff-normal { display: block; color: #374151; }
+
+        /* Diff 樣式 (Dark Mode Override) */
+        html.dark .diff-added { background-color: rgba(6, 95, 70, 0.4); color: #a7f3d0; }
+        html.dark .diff-removed { background-color: rgba(127, 29, 29, 0.4); color: #fecaca; }
+        html.dark .diff-header { color: #9ca3af; background-color: #374151; }
+        html.dark .diff-normal { color: #d1d5db; }
+
+        .status-dot { transition: all 0.2s; cursor: pointer; }
+        .status-dot:hover { transform: scale(1.25); box-shadow: 0 0 8px rgba(0,0,0,0.1); }
+        
+        input[type="checkbox"] { transform: scale(1.2); cursor: pointer; }
+        
+        /* Badges 基礎樣式 */
+        .badge { display: inline-block; padding: 2px 8px; border-radius: 9999px; font-size: 0.75rem; font-weight: 700; white-space: nowrap; }
+        
+        /* Light Mode Badges */
+        .badge-xs { background-color: #f3f4f6; color: #4b5563; border: 1px solid #d1d5db; }
+        .badge-s  { background-color: #d1fae5; color: #065f46; border: 1px solid #6ee7b7; }
+        .badge-m  { background-color: #dbeafe; color: #1e40af; border: 1px solid #93c5fd; }
+        .badge-l  { background-color: #ffedd5; color: #9a3412; border: 1px solid #fdba74; }
+        .badge-xl { background-color: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+
+        /* Dark Mode Badges Override */
+        html.dark .badge-xs { background-color: #374151; color: #e5e7eb; border-color: #4b5563; }
+        html.dark .badge-s  { background-color: #064e3b; color: #6ee7b7; border-color: #059669; }
+        html.dark .badge-m  { background-color: #1e3a8a; color: #93c5fd; border-color: #2563eb; }
+        html.dark .badge-l  { background-color: #7c2d12; color: #fdba74; border-color: #ea580c; }
+        html.dark .badge-xl { background-color: #7f1d1d; color: #fca5a5; border-color: #dc2626; }
     </style>
 </head>
-<body class="bg-gray-100 text-gray-800 h-screen overflow-hidden">
+<body class="bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-100 h-screen overflow-hidden transition-colors duration-300">
 
 <div id="app" v-cloak class="flex flex-col h-full">
-    
     <div v-if="error" class="p-4 bg-red-100 text-red-700 text-center font-bold">{{ error }}</div>
 
     <div class="flex-1 overflow-y-auto p-6" v-else>
-        <header class="mb-8">
-            <h1 class="text-3xl font-bold mb-2">MDN 翻譯同步狀態報告</h1>
-            <p class="text-sm text-gray-500">生成時間: {{ generatedTime }}</p>
+        <header class="mb-8 flex justify-between items-center">
+            <div>
+                <h1 class="text-3xl font-bold mb-2 text-gray-900 dark:text-white">MDN 翻譯同步狀態報告</h1>
+                <p class="text-sm text-gray-500 dark:text-gray-400">生成時間: {{ generatedTime }}</p>
+            </div>
+            <button @click="toggleTheme" class="p-3 rounded-full bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors" title="切換深色模式">
+                <span v-if="isDarkMode">☀️</span>
+                <span v-else>🌙</span>
+            </button>
         </header>
 
         <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-            <div class="bg-white p-4 rounded shadow border-l-4 border-green-500 cursor-pointer hover:bg-green-50" @click="filterStatus = 'up_to_date'">
-                <div class="text-gray-500 text-sm">最新版本</div>
-                <div class="text-2xl font-bold">{{ stats.up_to_date }}</div>
+            <div class="bg-white dark:bg-gray-800 p-4 rounded shadow border-l-4 border-green-500 cursor-pointer hover:bg-green-50 dark:hover:bg-gray-700 transition-colors" @click="filterStatus = 'up_to_date'">
+                <div class="text-gray-500 dark:text-gray-400 text-sm">最新版本</div>
+                <div class="text-2xl font-bold text-gray-900 dark:text-gray-100">{{ stats.up_to_date }}</div>
             </div>
-            <div class="bg-white p-4 rounded shadow border-l-4 border-yellow-400 cursor-pointer hover:bg-yellow-50" @click="filterStatus = 'outdated'">
-                <div class="text-gray-500 text-sm">需要更新</div>
-                <div class="text-2xl font-bold">{{ stats.outdated }}</div>
+            <div class="bg-white dark:bg-gray-800 p-4 rounded shadow border-l-4 border-yellow-400 cursor-pointer hover:bg-yellow-50 dark:hover:bg-gray-700 transition-colors" @click="filterStatus = 'outdated'">
+                <div class="text-gray-500 dark:text-gray-400 text-sm">需要更新</div>
+                <div class="text-2xl font-bold text-gray-900 dark:text-gray-100">{{ stats.outdated }}</div>
             </div>
-            <div class="bg-white p-4 rounded shadow border-l-4 border-red-500 cursor-pointer hover:bg-red-50" @click="filterStatus = 'missing_meta'">
-                <div class="text-gray-500 text-sm">缺少 Meta</div>
-                <div class="text-2xl font-bold">{{ stats.missing_meta }}</div>
+            <div class="bg-white dark:bg-gray-800 p-4 rounded shadow border-l-4 border-red-500 cursor-pointer hover:bg-red-50 dark:hover:bg-gray-700 transition-colors" @click="filterStatus = 'missing_meta'">
+                <div class="text-gray-500 dark:text-gray-400 text-sm">缺少 Meta</div>
+                <div class="text-2xl font-bold text-gray-900 dark:text-gray-100">{{ stats.missing_meta }}</div>
             </div>
-            <div class="bg-white p-4 rounded shadow border-l-4 border-gray-400 cursor-pointer hover:bg-gray-50" @click="filterStatus = 'untranslated'">
-                <div class="text-gray-500 text-sm">未翻譯</div>
-                <div class="text-2xl font-bold">{{ stats.untranslated }}</div>
+            <div class="bg-white dark:bg-gray-800 p-4 rounded shadow border-l-4 border-gray-400 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors" @click="filterStatus = 'untranslated'">
+                <div class="text-gray-500 dark:text-gray-400 text-sm">未翻譯</div>
+                <div class="text-2xl font-bold text-gray-900 dark:text-gray-100">{{ stats.untranslated }}</div>
             </div>
         </div>
 
-        <div class="bg-white p-4 rounded shadow mb-6 flex gap-4 items-center">
-            <input type="text" v-model="searchQuery" placeholder="搜尋檔案路徑..." class="flex-1 border rounded px-3 py-2">
-            <select v-model="filterStatus" class="border rounded px-3 py-2">
+        <div class="bg-white dark:bg-gray-800 p-4 rounded shadow mb-6 flex gap-4 items-center flex-wrap transition-colors">
+            <input type="text" v-model="searchQuery" placeholder="搜尋檔案路徑..." class="flex-1 border dark:border-gray-600 rounded px-3 py-2 min-w-[200px] bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400">
+            
+            <select v-model="filterStatus" class="border dark:border-gray-600 rounded px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100">
                 <option value="">所有狀態</option>
                 <option value="up_to_date">最新版本</option>
                 <option value="outdated">需要更新</option>
@@ -68,91 +97,90 @@
                 <option value="untranslated">未翻譯</option>
                 <option value="checked">已標記 (Checked)</option>
             </select>
-            <span class="text-sm text-gray-500 font-mono" v-if="checkedPaths.length > 0">
+            
+            <select v-model="filterSize" class="border dark:border-gray-600 rounded px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100">
+                <option value="">所有大小</option>
+                <option value="XS">極小 (XS)</option>
+                <option value="S">小 (S)</option>
+                <option value="M">中 (M)</option>
+                <option value="L">大 (L)</option>
+                <option value="XL">特大 (XL)</option>
+            </select>
+            
+            <span class="text-sm text-gray-500 dark:text-gray-400 font-mono whitespace-nowrap" v-if="checkedPaths.length > 0">
                 已標記: {{ checkedPaths.length }}
             </span>
         </div>
 
-        <div class="bg-white rounded shadow overflow-x-auto mb-10">
+        <div class="bg-white dark:bg-gray-800 rounded shadow overflow-x-auto mb-10 transition-colors">
             <table class="w-full text-left border-collapse">
                 <thead>
-                    <tr class="bg-gray-50 border-b text-xs uppercase text-gray-500">
+                    <tr class="bg-gray-50 dark:bg-gray-700 border-b dark:border-gray-600 text-xs uppercase text-gray-500 dark:text-gray-400">
                         <th class="p-4 w-12 text-center">選取</th>
                         <th class="p-4 w-16 text-center">狀態</th>
+                        <th class="p-4 w-20 text-center">大小</th>
                         <th class="p-4">檔案路徑</th>
                         <th class="p-4 w-32">Source</th>
                         <th class="p-4 w-32">Current</th>
                     </tr>
                 </thead>
-                <tbody>
-                    <tr v-for="item in filteredData" :key="item.path" class="border-b hover:bg-gray-50" :class="{'bg-blue-50': isChecked(item.path)}">
+                <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
+                    <tr v-for="item in filteredData" :key="item.path" 
+                        class="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors" 
+                        :class="{'bg-blue-50 dark:bg-blue-900/30': isChecked(item.path)}">
+                        
                         <td class="p-4 text-center">
-                            <input 
-                                type="checkbox" 
-                                :checked="isChecked(item.path)" 
-                                @change="toggleCheck(item.path)"
-                                title="標記此檔案 (Session)"
-                            >
+                            <input type="checkbox" :checked="isChecked(item.path)" @change="toggleCheck(item.path)">
                         </td>
-
                         <td class="p-4 text-center">
-                            <div 
-                                class="w-4 h-4 rounded-full mx-auto status-dot"
-                                :class="colorClass(item.status)"
-                                @click="openDiff(item)"
-                                :title="'狀態: ' + item.status + ' (點擊開啟詳情)'">
-                            </div>
+                            <div class="w-4 h-4 rounded-full mx-auto status-dot" :class="colorClass(item.status)" @click="openDiff(item)" :title="'狀態: ' + item.status"></div>
+                        </td>
+                        <td class="p-4 text-center">
+                            <span :class="['badge', sizeBadgeClass(item.size)]">{{ getSizeLabel(item.size) }}</span>
+                            <div class="text-[10px] text-gray-400 dark:text-gray-500 mt-1 font-mono">{{ (item.size / 1024).toFixed(1) }} KB</div>
                         </td>
                         <td class="p-4 font-mono text-sm">
-                            <a :href="item.url" target="_blank" class="text-blue-600 hover:underline block truncate max-w-lg">{{ item.path }}</a>
-                            <span @click="openDiff(item)" class="text-xs text-gray-500 hover:text-blue-600 hover:underline cursor-pointer mt-1 inline-block">
-                                [開啟詳情]
-                            </span>
+                            <a :href="item.url" target="_blank" class="text-blue-600 dark:text-blue-400 hover:underline block truncate max-w-lg">{{ item.path }}</a>
+                            <span @click="openDiff(item)" class="text-xs text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:underline cursor-pointer mt-1 inline-block">[開啟詳情]</span>
                         </td>
-                        <td class="p-4 font-mono text-xs text-gray-400">{{ item.sourceCommit?.substring(0, 7) || '-' }}</td>
-                        <td class="p-4 font-mono text-xs text-gray-400">{{ item.currentCommit?.substring(0, 7) || '-' }}</td>
+                        <td class="p-4 font-mono text-xs text-gray-400 dark:text-gray-500">{{ item.sourceCommit?.substring(0, 7) || '-' }}</td>
+                        <td class="p-4 font-mono text-xs text-gray-400 dark:text-gray-500">{{ item.currentCommit?.substring(0, 7) || '-' }}</td>
                     </tr>
                 </tbody>
             </table>
         </div>
     </div>
 
-    <div v-if="activeItem" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50" @click.self="closeDiff">
-        <div class="bg-white rounded-lg shadow-xl w-full max-w-5xl h-[85vh] flex flex-col">
-            <div class="p-4 border-b flex justify-between bg-gray-50">
+    <div v-if="activeItem" class="fixed inset-0 bg-black bg-opacity-50 dark:bg-opacity-70 flex items-center justify-center p-4 z-50 backdrop-blur-sm" @click.self="closeDiff">
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-5xl h-[85vh] flex flex-col transition-colors">
+            <div class="p-4 border-b dark:border-gray-700 flex justify-between bg-gray-50 dark:bg-gray-750 rounded-t-lg items-center">
                 <div>
-                    <h3 class="font-bold">檔案詳情</h3>
-                    <p class="text-xs text-gray-500 font-mono">{{ activeItem.path }}</p>
+                    <h3 class="font-bold text-gray-900 dark:text-white">檔案詳情</h3>
+                    <p class="text-xs text-gray-500 dark:text-gray-400 font-mono">{{ activeItem.path }}</p>
                 </div>
-                <button @click="closeDiff" class="text-2xl font-bold text-gray-500 hover:text-black">&times;</button>
+                <button @click="closeDiff" class="text-2xl font-bold text-gray-500 hover:text-black dark:text-gray-400 dark:hover:text-white">&times;</button>
             </div>
             
-            <div class="flex-1 overflow-auto p-4 bg-gray-50 font-mono text-sm">
-                <div v-if="activeItem.diff" class="bg-white border rounded p-2 shadow-sm whitespace-pre-wrap mb-4">
-                    <div class="text-xs text-gray-400 mb-2 border-b pb-1">Git Diff 變更:</div>
+            <div class="flex-1 overflow-auto p-4 bg-gray-50 dark:bg-gray-900 font-mono text-sm">
+                <div v-if="activeItem.diff" class="bg-white dark:bg-gray-800 border dark:border-gray-700 rounded p-2 shadow-sm whitespace-pre-wrap mb-4">
+                    <div class="text-xs text-gray-400 dark:text-gray-500 mb-2 border-b dark:border-gray-700 pb-1">Git Diff 變更:</div>
                     <span v-for="(line, i) in activeItem.diff.split('\n')" :key="i" :class="getDiffLineClass(line)">{{ line }}</span>
                 </div>
-                <div v-else class="text-center text-gray-400 py-4 mb-4 border-2 border-dashed rounded">
-                    (此檔案無 Git Diff 變更紀錄)
-                </div>
+                <div v-else class="text-center text-gray-400 dark:text-gray-600 py-4 mb-4 border-2 border-dashed dark:border-gray-700 rounded">(此檔案無 Git Diff 變更紀錄)</div>
 
-                <div v-if="activeItem.content" class="bg-white border rounded p-2 shadow-sm whitespace-pre-wrap text-gray-600 h-64 overflow-y-auto">
-                    <div class="text-xs text-gray-400 mb-2 border-b pb-1 sticky top-0 bg-white">目前翻譯內容 (預覽):</div>
+                <div v-if="activeItem.content" class="bg-white dark:bg-gray-800 border dark:border-gray-700 rounded p-2 shadow-sm whitespace-pre-wrap text-gray-600 dark:text-gray-300 h-64 overflow-y-auto relative">
+                    <div class="text-xs text-gray-400 dark:text-gray-500 mb-2 border-b dark:border-gray-700 pb-1 sticky top-0 bg-white dark:bg-gray-800">目前翻譯內容 (預覽):</div>
                     {{ activeItem.content }}
                 </div>
-                <div v-else class="text-center text-gray-400 py-4 border-2 border-dashed rounded">
-                    (無法讀取檔案內容，或檔案尚未翻譯)
-                </div>
+                <div v-else class="text-center text-gray-400 dark:text-gray-600 py-4 border-2 border-dashed dark:border-gray-700 rounded">(無法讀取檔案內容)</div>
             </div>
 
-            <div class="p-4 border-t bg-gray-50 flex flex-col md:flex-row justify-between items-center gap-2">
+            <div class="p-4 border-t dark:border-gray-700 bg-gray-50 dark:bg-gray-800 rounded-b-lg flex flex-col md:flex-row justify-between items-center gap-2">
                 <div class="flex gap-2 w-full md:w-auto">
-                    <button v-if="activeItem.diff" @click="copyDiff" class="px-4 py-2 border bg-white rounded hover:bg-gray-50 text-sm flex-1 md:flex-none">{{ copyText }}</button>
-                    <button @click="copyPrompt" class="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 text-sm font-bold flex items-center gap-2 flex-1 md:flex-none justify-center">
-                        <span>✨</span> {{ promptButtonText }}
-                    </button>
+                    <button v-if="activeItem.diff" @click="copyDiff" class="px-4 py-2 border dark:border-gray-600 bg-white dark:bg-gray-700 dark:text-gray-200 rounded hover:bg-gray-50 dark:hover:bg-gray-600 text-sm flex-1 md:flex-none transition-colors">{{ copyText }}</button>
+                    <button @click="copyPrompt" class="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 text-sm font-bold flex items-center gap-2 flex-1 md:flex-none justify-center transition-colors"><span>✨</span> {{ promptButtonText }}</button>
                 </div>
-                <button @click="closeDiff" class="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300 text-sm w-full md:w-auto">關閉</button>
+                <button @click="closeDiff" class="px-4 py-2 bg-gray-200 dark:bg-gray-700 dark:text-gray-300 rounded hover:bg-gray-300 dark:hover:bg-gray-600 text-sm w-full md:w-auto transition-colors">關閉</button>
             </div>
         </div>
     </div>
@@ -160,7 +188,8 @@
 
 <script>
     const { createApp } = Vue;
-    const STORAGE_KEY = 'mdn_checked_files'; // SessionStorage 的 Key
+    const STORAGE_KEY = 'mdn_checked_files';
+    const THEME_KEY = 'mdn_theme_preference';
 
     createApp({
         data() {
@@ -169,31 +198,32 @@
                 promptTemplate: '',
                 searchQuery: '',
                 filterStatus: '',
+                filterSize: '',
+                checkedPaths: [],
                 generatedTime: new Date().toLocaleString(),
                 activeItem: null,
                 copyText: '複製 Diff',
                 promptButtonText: '複製 Prompt',
                 error: null,
-                // --- [修改] 新增：已選取的檔案路徑列表 ---
-                checkedPaths: [] 
+                isDarkMode: false
             }
         },
         async mounted() {
-            try {
-                // --- [修改] 讀取 Session Storage ---
-                const savedChecks = sessionStorage.getItem(STORAGE_KEY);
-                if (savedChecks) {
-                    try {
-                        this.checkedPaths = JSON.parse(savedChecks);
-                    } catch (e) {
-                        console.error('解析 Session Storage 失敗', e);
-                    }
-                }
+            // 初始化 Dark Mode
+            const savedTheme = localStorage.getItem(THEME_KEY);
+            if (savedTheme) {
+                this.isDarkMode = savedTheme === 'dark';
+            } else {
+                this.isDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
+            }
+            this.applyTheme();
 
-                const [dataRes, metaRes] = await Promise.all([
-                    fetch('./data.json'),
-                    fetch('./meta.json')
-                ]);
+            // 初始化 Checkbox
+            try {
+                const savedChecks = sessionStorage.getItem(STORAGE_KEY);
+                if (savedChecks) this.checkedPaths = JSON.parse(savedChecks);
+
+                const [dataRes, metaRes] = await Promise.all([ fetch('./data.json'), fetch('./meta.json') ]);
                 if (!dataRes.ok) throw new Error("無法讀取 data.json");
                 this.rawData = await dataRes.json();
                 if (metaRes.ok) {
@@ -216,20 +246,33 @@
             filteredData() {
                 return this.rawData.filter(item => {
                     const matchSearch = item.path.toLowerCase().includes(this.searchQuery.toLowerCase());
-                    
-                    // --- [修改] 支援篩選「已選取」 ---
                     let matchStatus = true;
-                    if (this.filterStatus === 'checked') {
-                        matchStatus = this.checkedPaths.includes(item.path);
-                    } else if (this.filterStatus) {
-                        matchStatus = item.status === this.filterStatus;
-                    }
+                    if (this.filterStatus === 'checked') matchStatus = this.checkedPaths.includes(item.path);
+                    else if (this.filterStatus) matchStatus = item.status === this.filterStatus;
+                    
+                    let matchSize = true;
+                    if (this.filterSize) matchSize = this.getSizeLabel(item.size) === this.filterSize;
 
-                    return matchSearch && matchStatus;
+                    return matchSearch && matchStatus && matchSize;
                 });
             }
         },
         methods: {
+            // Theme Methods
+            toggleTheme() {
+                this.isDarkMode = !this.isDarkMode;
+                this.applyTheme();
+                localStorage.setItem(THEME_KEY, this.isDarkMode ? 'dark' : 'light');
+            },
+            applyTheme() {
+                if (this.isDarkMode) {
+                    document.documentElement.classList.add('dark');
+                } else {
+                    document.documentElement.classList.remove('dark');
+                }
+            },
+
+            // Existing Methods
             colorClass(status) { return { 'up_to_date': 'bg-green-500', 'outdated': 'bg-yellow-400', 'missing_meta': 'bg-red-500', 'untranslated': 'bg-gray-300' }[status] || 'bg-gray-200'; },
             getDiffLineClass(line) {
                 if (line.startsWith('+')) return 'diff-added';
@@ -237,49 +280,36 @@
                 if (line.startsWith('@@')) return 'diff-header';
                 return 'diff-normal';
             },
+            getSizeLabel(bytes) {
+                if (bytes < 2000) return 'XS';
+                if (bytes < 5000) return 'S';
+                if (bytes < 10000) return 'M';
+                if (bytes < 20000) return 'L';
+                return 'XL';
+            },
+            sizeBadgeClass(bytes) {
+                return { 'XS': 'badge-xs', 'S': 'badge-s', 'M': 'badge-m', 'L': 'badge-l', 'XL': 'badge-xl' }[this.getSizeLabel(bytes)];
+            },
+            isChecked(path) { return this.checkedPaths.includes(path); },
+            toggleCheck(path) {
+                if (this.isChecked(path)) this.checkedPaths = this.checkedPaths.filter(p => p !== path);
+                else this.checkedPaths.push(path);
+                sessionStorage.setItem(STORAGE_KEY, JSON.stringify(this.checkedPaths));
+            },
             openDiff(item) { this.activeItem = item; this.copyText = '複製 Diff'; this.promptButtonText = '複製 Prompt'; },
             closeDiff() { this.activeItem = null; },
-            
             async copyDiff() {
                 if (!this.activeItem?.diff) return;
                 await navigator.clipboard.writeText(this.activeItem.diff);
                 this.copyText = '已複製!';
                 setTimeout(() => this.copyText = '複製 Diff', 1500);
             },
-            
             async copyPrompt() {
                 const diff = this.activeItem?.diff || '(無 Diff 變更)';
                 const content = this.activeItem?.content || '(無檔案內容)';
                 const path = this.activeItem?.path || '';
-
-                let text = this.promptTemplate
-                    .split('{{DIFF}}').join(diff)
-                    .split('{{CONTENT}}').join(content)
-                    .split('{{PATH}}').join(path);
-
-                try {
-                    await navigator.clipboard.writeText(text);
-                    this.promptButtonText = '已複製!';
-                    setTimeout(() => this.promptButtonText = '複製 Prompt', 1500);
-                } catch (e) {
-                    alert('複製失敗');
-                }
-            },
-
-            // --- [修改] 新增：Checkbox 相關方法 ---
-            isChecked(path) {
-                return this.checkedPaths.includes(path);
-            },
-            toggleCheck(path) {
-                if (this.isChecked(path)) {
-                    // 取消選取
-                    this.checkedPaths = this.checkedPaths.filter(p => p !== path);
-                } else {
-                    // 加入選取
-                    this.checkedPaths.push(path);
-                }
-                // 存入 Session Storage
-                sessionStorage.setItem(STORAGE_KEY, JSON.stringify(this.checkedPaths));
+                let text = this.promptTemplate.split('{{DIFF}}').join(diff).split('{{CONTENT}}').join(content).split('{{PATH}}').join(path);
+                try { await navigator.clipboard.writeText(text); this.promptButtonText = '已複製!'; setTimeout(() => this.promptButtonText = '複製 Prompt', 1500); } catch (e) { alert('複製失敗'); }
             }
         }
     }).mount('#app');
