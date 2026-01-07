@@ -37,27 +37,35 @@ function findRenamedSource(cwd, fromHash, toHash, currentFilePath) {
     });
 }
 
-// --- Git Diff (支援 Rename) ---
+// --- Git Diff (支援 Rename + Word Diff) ---
 async function getGitDiff(cwd, fromHash, toHash, filePath) {
     let oldPath = filePath;
+    
+    // 1. 檢查舊版是否存在 (處理改名)
     const existsAtOld = await checkFileExists(cwd, fromHash, filePath);
-
     if (!existsAtOld) {
         const detectedOldPath = await findRenamedSource(cwd, fromHash, toHash, filePath);
         if (detectedOldPath) oldPath = detectedOldPath;
     }
 
     return new Promise((resolve) => {
-        // 使用 blob hash 比對 (fromHash:path)
-        const args = ['diff', `${fromHash}:${oldPath}`, `${toHash}:${filePath}`];
+        // 2. 使用 Word Diff 模式比對 Blob
+        const args = [
+            'diff', 
+            '--word-diff=plain', // 使用 plain 模式，產出 {+...+} 和 [-...-]
+            '--no-color',        // 確保無色碼
+            `${fromHash}:${oldPath}`, 
+            `${toHash}:${filePath}`
+        ];
+        
         const child = spawn('git', args, { cwd });
         let data = '';
         
         child.stdout.on('data', chunk => data += chunk);
         child.stderr.on('data', () => {}); 
         child.on('close', () => {
-            if (data.length > 30000) {
-                data = data.substring(0, 30000) + '\n... (差異過大，已截斷) ...';
+            if (data.length > 50000) { // Word diff 可能會產出較多標記，放寬限制
+                data = data.substring(0, 50000) + '\n... (差異過大，已截斷) ...';
             }
             resolve(data || '(無差異或全新檔案)');
         });
@@ -133,6 +141,7 @@ async function run() {
                     } else {
                         item.status = 'outdated';
                         item.content = transContent;
+                        // 呼叫 Word Diff
                         item.diff = await getGitDiff(CONTENT_REPO, item.sourceCommit, item.currentCommit, srcFilePath);
                     }
                 } else {
@@ -164,7 +173,6 @@ async function run() {
     }
     await fs.writeFile(path.join(OUTPUT_DIR, 'meta.json'), JSON.stringify({ prompt: promptContent }, null, 2));
 
-    // 如果目錄下有 template.html，複製過去；否則請確保手動建立 template.html
     if (await fs.pathExists('template.html')) {
         await fs.copy('template.html', path.join(OUTPUT_DIR, 'index.html'));
     }
