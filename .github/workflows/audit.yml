@@ -42,14 +42,13 @@ jobs:
           path: mdn-translated-content
           fetch-depth: 1
 
-      # ★ 抓取 PR 資料
       - name: Fetch Open PRs Data
         run: |
           gh api graphql -f query='
             query {
-              repository(owner:"mdn", name:"translated-content") {
-                pullRequests(first: 100, states:OPEN) {
-                  nodes {
+              search(query: "repo:mdn/translated-content is:pr is:open label:l10n-zh", type: ISSUE, first: 100) {
+                nodes {
+                  ... on PullRequest {
                     number
                     url
                     title
@@ -64,7 +63,7 @@ jobs:
           ' > prs.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
+      
       - name: Run Audit Script
         run: npm run audit
 

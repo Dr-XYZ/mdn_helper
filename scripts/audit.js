@@ -74,6 +74,7 @@ async function getGitDiff(cwd, fromHash, toHash, filePath) {
 }
 
 // --- 讀取 PR 資料 (從本地 JSON) ---
+
 async function loadPRsFromFile() {
     const prMap = new Map();
     
@@ -84,27 +85,57 @@ async function loadPRsFromFile() {
 
     try {
         const rawData = await fs.readJson(PR_DATA_PATH);
-        const prList = rawData.data?.repository?.pullRequests?.nodes || [];
+        
+        // 適應 search (GraphQL) 的結構
+        let prList = [];
+        if (rawData.data?.search?.nodes) {
+            prList = rawData.data.search.nodes;
+        } else if (rawData.data?.repository?.pullRequests?.nodes) {
+            prList = rawData.data.repository.pullRequests.nodes;
+        }
 
-        console.log(`[PR] 讀取到 ${prList.length} 筆開啟的 PR，正在分析路徑...`);
+        console.log(`[PR] 原始 API 回傳 ${prList.length} 筆 (包含 zh-cn 與 zh-tw)`);
+
+        let matchCount = 0;
+        // 設定過濾前綴，例如 "files/zh-tw/"
+        const prefix = `files/${TARGET_LOCALE.toLowerCase()}/`; 
 
         for (const pr of prList) {
-            const files = pr.files?.nodes || [];
+            // 過濾無效資料
+            if (!pr.files || !pr.files.nodes) continue;
+
+            const files = pr.files.nodes;
+            
             for (const file of files) {
                 const rawPath = file.path;
-                const prefix = `files/${TARGET_LOCALE}/`;
-                if (rawPath.startsWith(prefix)) {
-                    const relativePath = rawPath.replace(prefix, '');
+                
+                // ★★★ 關鍵過濾 ★★★
+                // 只接受路徑開頭是 files/zh-tw/ 的檔案
+                // 這樣就能自動過濾掉 files/zh-cn/ 的 PR
+                if (rawPath.toLowerCase().startsWith(prefix)) {
+                    
+                    // 移除前綴，取得相對路徑 (例如 index.md)
+                    // substring 效能比 replace 好，且我們已經確認過 startsWith
+                    const relativePath = rawPath.substring(prefix.length);
+                    
                     prMap.set(relativePath, {
                         url: pr.url,
                         number: pr.number,
                         title: pr.title,
                         user: pr.author?.login || 'unknown'
                     });
+                    matchCount++;
                 }
             }
         }
-        console.log(`[PR] 分析完成，共 ${prMap.size} 個檔案涉及 PR。`);
+        
+        console.log(`[PR] 篩選完成: 共 ${prMap.size} 個 ${TARGET_LOCALE} 檔案被標記 (剔除簡中與無關檔案)`);
+        
+        // Debug: 印出前 3 筆確認路徑正確
+        if (prMap.size > 0) {
+             console.log('[PR Debug] 範例:', Array.from(prMap.keys()).slice(0, 3));
+        }
+
     } catch (e) {
         console.error('❌ 解析 prs.json 失敗:', e.message);
     }
