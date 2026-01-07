@@ -12,7 +12,6 @@
         .diff-removed { background-color: #fee2e2; color: #991b1b; display: block; }
         .diff-header { color: #6b7280; background-color: #f3f4f6; display: block; }
         .diff-normal { display: block; }
-        /* 讓所有燈號都有互動感 */
         .status-dot {
             transition: all 0.2s;
             cursor: pointer;
@@ -20,6 +19,11 @@
         .status-dot:hover {
             transform: scale(1.25);
             box-shadow: 0 0 8px rgba(0,0,0,0.1);
+        }
+        /* --- [修改] Checkbox 樣式優化 --- */
+        input[type="checkbox"] {
+            transform: scale(1.2);
+            cursor: pointer;
         }
     </style>
 </head>
@@ -54,7 +58,7 @@
             </div>
         </div>
 
-        <div class="bg-white p-4 rounded shadow mb-6 flex gap-4">
+        <div class="bg-white p-4 rounded shadow mb-6 flex gap-4 items-center">
             <input type="text" v-model="searchQuery" placeholder="搜尋檔案路徑..." class="flex-1 border rounded px-3 py-2">
             <select v-model="filterStatus" class="border rounded px-3 py-2">
                 <option value="">所有狀態</option>
@@ -62,13 +66,18 @@
                 <option value="outdated">需要更新</option>
                 <option value="missing_meta">缺少 Meta</option>
                 <option value="untranslated">未翻譯</option>
+                <option value="checked">已標記 (Checked)</option>
             </select>
+            <span class="text-sm text-gray-500 font-mono" v-if="checkedPaths.length > 0">
+                已標記: {{ checkedPaths.length }}
+            </span>
         </div>
 
         <div class="bg-white rounded shadow overflow-x-auto mb-10">
             <table class="w-full text-left border-collapse">
                 <thead>
                     <tr class="bg-gray-50 border-b text-xs uppercase text-gray-500">
+                        <th class="p-4 w-12 text-center">選取</th>
                         <th class="p-4 w-16 text-center">狀態</th>
                         <th class="p-4">檔案路徑</th>
                         <th class="p-4 w-32">Source</th>
@@ -76,7 +85,16 @@
                     </tr>
                 </thead>
                 <tbody>
-                    <tr v-for="item in filteredData" :key="item.path" class="border-b hover:bg-gray-50">
+                    <tr v-for="item in filteredData" :key="item.path" class="border-b hover:bg-gray-50" :class="{'bg-blue-50': isChecked(item.path)}">
+                        <td class="p-4 text-center">
+                            <input 
+                                type="checkbox" 
+                                :checked="isChecked(item.path)" 
+                                @change="toggleCheck(item.path)"
+                                title="標記此檔案 (Session)"
+                            >
+                        </td>
+
                         <td class="p-4 text-center">
                             <div 
                                 class="w-4 h-4 rounded-full mx-auto status-dot"
@@ -142,6 +160,7 @@
 
 <script>
     const { createApp } = Vue;
+    const STORAGE_KEY = 'mdn_checked_files'; // SessionStorage 的 Key
 
     createApp({
         data() {
@@ -154,11 +173,23 @@
                 activeItem: null,
                 copyText: '複製 Diff',
                 promptButtonText: '複製 Prompt',
-                error: null
+                error: null,
+                // --- [修改] 新增：已選取的檔案路徑列表 ---
+                checkedPaths: [] 
             }
         },
         async mounted() {
             try {
+                // --- [修改] 讀取 Session Storage ---
+                const savedChecks = sessionStorage.getItem(STORAGE_KEY);
+                if (savedChecks) {
+                    try {
+                        this.checkedPaths = JSON.parse(savedChecks);
+                    } catch (e) {
+                        console.error('解析 Session Storage 失敗', e);
+                    }
+                }
+
                 const [dataRes, metaRes] = await Promise.all([
                     fetch('./data.json'),
                     fetch('./meta.json')
@@ -185,7 +216,15 @@
             filteredData() {
                 return this.rawData.filter(item => {
                     const matchSearch = item.path.toLowerCase().includes(this.searchQuery.toLowerCase());
-                    const matchStatus = this.filterStatus ? item.status === this.filterStatus : true;
+                    
+                    // --- [修改] 支援篩選「已選取」 ---
+                    let matchStatus = true;
+                    if (this.filterStatus === 'checked') {
+                        matchStatus = this.checkedPaths.includes(item.path);
+                    } else if (this.filterStatus) {
+                        matchStatus = item.status === this.filterStatus;
+                    }
+
                     return matchSearch && matchStatus;
                 });
             }
@@ -225,6 +264,22 @@
                 } catch (e) {
                     alert('複製失敗');
                 }
+            },
+
+            // --- [修改] 新增：Checkbox 相關方法 ---
+            isChecked(path) {
+                return this.checkedPaths.includes(path);
+            },
+            toggleCheck(path) {
+                if (this.isChecked(path)) {
+                    // 取消選取
+                    this.checkedPaths = this.checkedPaths.filter(p => p !== path);
+                } else {
+                    // 加入選取
+                    this.checkedPaths.push(path);
+                }
+                // 存入 Session Storage
+                sessionStorage.setItem(STORAGE_KEY, JSON.stringify(this.checkedPaths));
             }
         }
     }).mount('#app');
