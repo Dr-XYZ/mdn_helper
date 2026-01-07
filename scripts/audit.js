@@ -8,6 +8,7 @@ const CONTENT_REPO = './mdn-content';
 const TRANS_REPO = './mdn-translated-content';
 const TARGET_LOCALE = 'zh-tw';
 const OUTPUT_DIR = './public';
+const PR_DATA_PATH = './prs.json';
 
 // --- 輔助函式: 檢查檔案是否存在於某個 Commit ---
 function checkFileExists(cwd, commitHash, filePath) {
@@ -30,7 +31,6 @@ function findRenamedSource(cwd, fromHash, toHash, currentFilePath) {
         child.stdout.on('data', chunk => data += chunk);
         child.on('close', () => {
             const lines = data.trim().split('\n').filter(line => line.trim() !== '');
-            // 取最後一行 (時間軸上最接近 fromHash 的檔名)
             resolve(lines.length > 0 ? lines[lines.length - 1].trim() : null);
         });
         child.on('error', () => resolve(null));
@@ -52,8 +52,8 @@ async function getGitDiff(cwd, fromHash, toHash, filePath) {
         // 2. 使用 Word Diff 模式比對 Blob
         const args = [
             'diff', 
-            '--word-diff=plain', // 使用 plain 模式，產出 {+...+} 和 [-...-]
-            '--no-color',        // 確保無色碼
+            '--word-diff=plain', // 使用 plain 模式
+            '--no-color',
             `${fromHash}:${oldPath}`, 
             `${toHash}:${filePath}`
         ];
@@ -64,20 +64,63 @@ async function getGitDiff(cwd, fromHash, toHash, filePath) {
         child.stdout.on('data', chunk => data += chunk);
         child.stderr.on('data', () => {}); 
         child.on('close', () => {
-            if (data.length > 50000) { // Word diff 可能會產出較多標記，放寬限制
+            if (data.length > 50000) { 
                 data = data.substring(0, 50000) + '\n... (差異過大，已截斷) ...';
             }
-            resolve(data || '(無差異或全新檔案)');
+            resolve(data || ''); // 若無差異回傳空字串
         });
         child.on('error', () => resolve('Error generating diff'));
     });
 }
 
+// --- 讀取 PR 資料 (從本地 JSON) ---
+async function loadPRsFromFile() {
+    const prMap = new Map();
+    
+    if (!await fs.pathExists(PR_DATA_PATH)) {
+        console.log('⚠️ 找不到 prs.json，跳過 PR 標記。');
+        return prMap;
+    }
+
+    try {
+        const rawData = await fs.readJson(PR_DATA_PATH);
+        const prList = rawData.data?.repository?.pullRequests?.nodes || [];
+
+        console.log(`[PR] 讀取到 ${prList.length} 筆開啟的 PR，正在分析路徑...`);
+
+        for (const pr of prList) {
+            const files = pr.files?.nodes || [];
+            for (const file of files) {
+                const rawPath = file.path;
+                const prefix = `files/${TARGET_LOCALE}/`;
+                if (rawPath.startsWith(prefix)) {
+                    const relativePath = rawPath.replace(prefix, '');
+                    prMap.set(relativePath, {
+                        url: pr.url,
+                        number: pr.number,
+                        title: pr.title,
+                        user: pr.author?.login || 'unknown'
+                    });
+                }
+            }
+        }
+        console.log(`[PR] 分析完成，共 ${prMap.size} 個檔案涉及 PR。`);
+    } catch (e) {
+        console.error('❌ 解析 prs.json 失敗:', e.message);
+    }
+    
+    return prMap;
+}
+
 async function run() {
     console.time('執行時間');
+    
+    // 1. 載入 PR 資料
+    const prMap = await loadPRsFromFile();
+
     console.log(`[1/4] 開始比對... 目標語言: ${TARGET_LOCALE}`);
 
-    // 1. 建立英文版索引
+    // 2. 建立英文版索引
     const latestCommits = new Map();
     const gitLogProcess = spawn('git', ['log', '--format=::: %H', '--name-only', 'files/en-us'], { cwd: CONTENT_REPO });
 
@@ -98,7 +141,7 @@ async function run() {
     }
     console.log(`[2/4] 索引建立完成，共 ${latestCommits.size} 個檔案。`);
 
-    // 2. 比對與生成資料
+    // 3. 比對與生成資料
     const report = [];
     const processingPromises = [];
 
@@ -110,17 +153,20 @@ async function run() {
             const transFilePath = path.join(TRANS_REPO, 'files', TARGET_LOCALE, relativePath);
             const fullSrcPath = path.join(CONTENT_REPO, srcFilePath);
             
-            // 取得檔案大小
-            let fileSize = 0;
+            const prInfo = prMap.get(relativePath) || null;
+
+            // 取得完整檔案大小 (用於 Untranslated 狀態)
+            let fullFileSize = 0;
             try {
                 const stats = await fs.stat(fullSrcPath);
-                fileSize = stats.size;
-            } catch (e) { fileSize = 0; }
+                fullFileSize = stats.size;
+            } catch (e) { fullFileSize = 0; }
 
             const item = {
                 path: relativePath,
-                size: fileSize,
+                size: 0, // 稍後計算
                 status: 'untranslated',
+                pr: prInfo,
                 sourceCommit: null,
                 currentCommit: currentHash,
                 diff: null,
@@ -136,25 +182,33 @@ async function run() {
                 if (recordedCommit) {
                     item.sourceCommit = recordedCommit;
                     if (item.sourceCommit === currentHash) {
+                        // ★ 最新：工作量為 0
                         item.status = 'up_to_date';
                         item.content = transContent;
+                        item.size = 0;
                     } else {
+                        // ★ 過期：工作量為 Diff 大小
                         item.status = 'outdated';
                         item.content = transContent;
-                        // 呼叫 Word Diff
                         item.diff = await getGitDiff(CONTENT_REPO, item.sourceCommit, item.currentCommit, srcFilePath);
+                        // 如果 diff 失敗或為空，size 為 0，否則為字串長度
+                        item.size = item.diff ? item.diff.length : 0;
                     }
                 } else {
+                    // ★ 缺 Meta：視同未翻譯，工作量為全檔
                     item.status = 'missing_meta';
                     item.content = await fs.readFile(fullSrcPath, 'utf8');
+                    item.size = fullFileSize;
                 }
             } catch (err) {
+                // ★ 未翻譯：工作量為全檔
                 item.status = 'untranslated';
                 try {
                     item.content = await fs.readFile(fullSrcPath, 'utf8');
                 } catch (e) {
                     item.content = '(無法讀取英文原文)';
                 }
+                item.size = fullFileSize;
             }
             return item;
         })());
@@ -163,7 +217,7 @@ async function run() {
     const results = await Promise.all(processingPromises);
     report.push(...results);
 
-    // 3. 輸出檔案
+    // 4. 輸出檔案
     await fs.ensureDir(OUTPUT_DIR);
     await fs.writeFile(path.join(OUTPUT_DIR, 'data.json'), JSON.stringify(report, null, 2));
 

@@ -21,20 +21,20 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: 'npm'
 
       - name: Install Dependencies
-        run: npm install
+        run: npm ci
 
-      # 優化 1: 下載英文源 (只下載 Git 歷史，不下載檔案內容)
+      # Checkout 英文源 (需完整歷史)
       - name: Checkout MDN Content
         uses: actions/checkout@v4
         with:
           repository: mdn/content
           path: mdn-content
-          fetch-depth: 0        # 完整歷史 (找 Hash 必須)
-          filter: blob:none     # 不下載內容 (加速關鍵)
+          fetch-depth: 0 
 
-      # 優化 2: 下載翻譯源 (只下載最新版，無需歷史)
+      # Checkout 翻譯源
       - name: Checkout MDN Translated Content
         uses: actions/checkout@v4
         with:
@@ -42,7 +42,29 @@ jobs:
           path: mdn-translated-content
           fetch-depth: 1
 
-      # 執行腳本 (檔名保持 audit.js)
+      # ★ 抓取 PR 資料
+      - name: Fetch Open PRs Data
+        run: |
+          gh api graphql -f query='
+            query {
+              repository(owner:"mdn", name:"translated-content") {
+                pullRequests(first: 100, states:OPEN) {
+                  nodes {
+                    number
+                    url
+                    title
+                    author { login }
+                    files(first: 100) {
+                      nodes { path }
+                    }
+                  }
+                }
+              }
+            }
+          ' > prs.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Run Audit Script
         run: npm run audit
 
