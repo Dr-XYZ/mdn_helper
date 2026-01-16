@@ -104,7 +104,7 @@
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
-                    <tr v-for="item in filteredData" :key="item.path" class="hover:bg-gray-50 dark:hover:bg-gray-700" :class="{'bg-blue-50 dark:bg-blue-900/30': isChecked(item.path)}">
+                    <tr v-for="item in filteredData" :key="item.path" class="hover:bg-gray-50 dark:hover:bg-gray-700 group" :class="{'bg-blue-50 dark:bg-blue-900/30': isChecked(item.path)}">
                         <td class="p-4 text-center"><input type="checkbox" :checked="isChecked(item.path)" @change="toggleCheck(item.path)"></td>
                         <td class="p-4 text-center"><div class="w-4 h-4 rounded-full mx-auto status-dot" :class="colorClass(item.status)" @click="openDiff(item)"></div></td>
                         <td class="p-4 text-center">
@@ -120,7 +120,18 @@
                                 </a>
                             </div>
                         </td>
-                        <td class="p-4 font-mono text-xs text-gray-400">{{ item.sourceCommit?.substring(0, 7) || '-' }}</td>
+                        <td class="p-4 font-mono text-xs text-gray-400">
+                            <div v-if="item.sourceCommit" class="flex items-center gap-2 group/hash">
+                                <span>{{ item.sourceCommit.substring(0, 7) }}</span>
+                                <button 
+                                    @click.stop="copySHA(item.sourceCommit, $event)" 
+                                    class="opacity-0 group-hover/hash:opacity-100 transition-opacity p-1 text-gray-400 hover:text-blue-500 hover:bg-gray-100 dark:hover:bg-gray-600 rounded" 
+                                    title="複製完整 Commit SHA">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                                </button>
+                            </div>
+                            <span v-else>-</span>
+                        </td>
                         <td class="p-4 font-mono text-xs text-gray-400">{{ item.currentCommit?.substring(0, 7) || '-' }}</td>
                     </tr>
                 </tbody>
@@ -194,16 +205,12 @@
             formatWordDiff(text) { if (!text) return ''; return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\[-(.*?)-\]/g, '<span class="diff-removed">$1</span>').replace(/\{\+(.*?)\+\}/g, '<span class="diff-added">$1</span>'); },
             colorClass(s) { return { 'up_to_date': 'bg-green-500', 'outdated': 'bg-yellow-400', 'missing_meta': 'bg-red-500', 'untranslated': 'bg-gray-300' }[s] || 'bg-gray-200'; },
             
-            // --- Size 分類邏輯 (針對工作量) ---
+            // --- Size 分類邏輯 ---
             getSizeLabel(bytes) {
                 if (!bytes || bytes === 0) return 'Done';
-                // 200字以下 XS (改錯字)
                 if (bytes < 200) return 'XS';
-                // 1KB 以下 S (改段落)
                 if (bytes < 1024) return 'S';
-                // 5KB 以下 M
                 if (bytes < 5 * 1024) return 'M';
-                // 20KB 以下 L
                 if (bytes < 20 * 1024) return 'L';
                 return 'XL';
             },
@@ -221,6 +228,22 @@
             async copyPrompt() { 
                 let t = this.promptTemplate.replace('{{DIFF}}', this.activeItem.diff||'').replace('{{CONTENT}}', this.activeItem.content||'').replace('{{PATH}}', this.activeItem.path||'');
                 await navigator.clipboard.writeText(t); this.promptButtonText='已複製!'; setTimeout(()=>this.promptButtonText='複製 Prompt',1500); 
+            },
+            // 新增：複製完整 SHA 的方法
+            async copySHA(text, event) {
+                if(!text) return;
+                await navigator.clipboard.writeText(text);
+                
+                // 按鈕視覺回饋
+                const btn = event.currentTarget;
+                const originalHTML = btn.innerHTML;
+                
+                // 變更為綠色打勾
+                btn.innerHTML = '<span class="font-bold text-green-500">✓</span>';
+                
+                setTimeout(() => {
+                    btn.innerHTML = originalHTML;
+                }, 1000);
             }
         }
     }).mount('#app');
