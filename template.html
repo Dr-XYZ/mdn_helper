@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MDN 翻譯狀態報告</title>
+    <title>MDN 翻譯狀態報告 (效能優化版)</title>
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
@@ -26,7 +26,7 @@
         .badge-xs { background-color: #f3f4f6; color: #4b5563; border: 1px solid #d1d5db; }
         .badge-s  { background-color: #d1fae5; color: #065f46; border: 1px solid #6ee7b7; }
         .badge-m  { background-color: #dbeafe; color: #1e40af; border: 1px solid #93c5fd; }
-        .badge-l  { background-color: #ffedd5; color: #9a3412; border: 1px solid #fdba74; }
+        .badge-l  { background-color: #ffedd5; color: #9a3412; border: 1px solid #93c5fd; }
         .badge-xl { background-color: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
 
         html.dark .badge-done { background-color: #1f2937; color: #6b7280; border-color: #374151; }
@@ -44,7 +44,7 @@
         <header class="mb-8 flex justify-between items-center">
             <div>
                 <h1 class="text-3xl font-bold mb-2 text-gray-900 dark:text-white">MDN 翻譯同步狀態報告</h1>
-                <p class="text-sm text-gray-500 dark:text-gray-400">生成時間: {{ generatedTime }}</p>
+                <p class="text-sm text-gray-500 dark:text-gray-400">生成時間: {{ generatedTime }} <span v-if="rawData.length">| 總檔案數: {{ rawData.length }}</span></p>
             </div>
             <button @click="toggleTheme" class="p-3 rounded-full bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors">
                 <span v-if="isDarkMode">☀️</span><span v-else>🌙</span>
@@ -52,19 +52,19 @@
         </header>
 
         <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-            <div class="bg-white dark:bg-gray-800 p-4 rounded shadow border-l-4 border-green-500 cursor-pointer" @click="filterStatus = 'up_to_date'">
+            <div class="bg-white dark:bg-gray-800 p-4 rounded shadow border-l-4 border-green-500 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition" @click="setFilter('up_to_date')">
                 <div class="text-gray-500 dark:text-gray-400 text-sm">最新版本</div>
                 <div class="text-2xl font-bold">{{ stats.up_to_date }}</div>
             </div>
-            <div class="bg-white dark:bg-gray-800 p-4 rounded shadow border-l-4 border-yellow-400 cursor-pointer" @click="filterStatus = 'outdated'">
+            <div class="bg-white dark:bg-gray-800 p-4 rounded shadow border-l-4 border-yellow-400 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition" @click="setFilter('outdated')">
                 <div class="text-gray-500 dark:text-gray-400 text-sm">需要更新</div>
                 <div class="text-2xl font-bold">{{ stats.outdated }}</div>
             </div>
-            <div class="bg-white dark:bg-gray-800 p-4 rounded shadow border-l-4 border-red-500 cursor-pointer" @click="filterStatus = 'missing_meta'">
+            <div class="bg-white dark:bg-gray-800 p-4 rounded shadow border-l-4 border-red-500 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition" @click="setFilter('missing_meta')">
                 <div class="text-gray-500 dark:text-gray-400 text-sm">缺少 Meta</div>
                 <div class="text-2xl font-bold">{{ stats.missing_meta }}</div>
             </div>
-            <div class="bg-white dark:bg-gray-800 p-4 rounded shadow border-l-4 border-gray-400 cursor-pointer" @click="filterStatus = 'untranslated'">
+            <div class="bg-white dark:bg-gray-800 p-4 rounded shadow border-l-4 border-gray-400 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition" @click="setFilter('untranslated')">
                 <div class="text-gray-500 dark:text-gray-400 text-sm">未翻譯</div>
                 <div class="text-2xl font-bold">{{ stats.untranslated }}</div>
             </div>
@@ -91,7 +91,18 @@
             <span class="text-sm text-gray-500 font-mono" v-if="checkedPaths.length > 0">已標記: {{ checkedPaths.length }}</span>
         </div>
 
-        <div class="bg-white dark:bg-gray-800 rounded shadow overflow-x-auto mb-10">
+        <div class="flex justify-between items-center mb-2 px-1">
+            <div class="text-sm text-gray-500">
+                顯示 {{ (currentPage - 1) * pageSize + 1 }} - {{ Math.min(currentPage * pageSize, filteredData.length) }} 筆，共 {{ filteredData.length }} 筆
+            </div>
+            <div class="flex gap-2">
+                <button @click="prevPage" :disabled="currentPage === 1" class="px-3 py-1 bg-white dark:bg-gray-800 border dark:border-gray-600 rounded hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50">上一頁</button>
+                <span class="px-2 py-1">{{ currentPage }} / {{ totalPages }}</span>
+                <button @click="nextPage" :disabled="currentPage === totalPages" class="px-3 py-1 bg-white dark:bg-gray-800 border dark:border-gray-600 rounded hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50">下一頁</button>
+            </div>
+        </div>
+
+        <div class="bg-white dark:bg-gray-800 rounded shadow overflow-x-auto mb-4">
             <table class="w-full text-left border-collapse">
                 <thead>
                     <tr class="bg-gray-50 dark:bg-gray-700 border-b dark:border-gray-600 text-xs uppercase text-gray-500 dark:text-gray-400">
@@ -104,7 +115,7 @@
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
-                    <tr v-for="item in filteredData" :key="item.path" class="hover:bg-gray-50 dark:hover:bg-gray-700 group" :class="{'bg-blue-50 dark:bg-blue-900/30': isChecked(item.path)}">
+                    <tr v-for="item in paginatedData" :key="item.path" class="hover:bg-gray-50 dark:hover:bg-gray-700 group" :class="{'bg-blue-50 dark:bg-blue-900/30': isChecked(item.path)}">
                         <td class="p-4 text-center"><input type="checkbox" :checked="isChecked(item.path)" @change="toggleCheck(item.path)"></td>
                         <td class="p-4 text-center"><div class="w-4 h-4 rounded-full mx-auto status-dot" :class="colorClass(item.status)" @click="openDiff(item)"></div></td>
                         <td class="p-4 text-center">
@@ -123,10 +134,7 @@
                         <td class="p-4 font-mono text-xs text-gray-400">
                             <div v-if="item.sourceCommit" class="flex items-center gap-2">
                                 <span>{{ item.sourceCommit.substring(0, 7) }}</span>
-                                <button 
-                                    @click.stop="copySHA(item.sourceCommit, $event)" 
-                                    class="p-1 text-gray-300 hover:text-blue-500 hover:bg-gray-100 dark:hover:bg-gray-600 rounded transition-colors" 
-                                    title="複製完整 SHA (Raw)">
+                                <button @click.stop="copySHA(item.sourceCommit, $event)" class="p-1 text-gray-300 hover:text-blue-500 hover:bg-gray-100 dark:hover:bg-gray-600 rounded transition-colors" title="複製完整 SHA (Raw)">
                                     <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
                                 </button>
                             </div>
@@ -135,10 +143,7 @@
                         <td class="p-4 font-mono text-xs text-gray-400">
                             <div v-if="item.currentCommit" class="flex items-center gap-2">
                                 <span>{{ item.currentCommit.substring(0, 7) }}</span>
-                                <button 
-                                    @click.stop="copySHA(item.currentCommit, $event)" 
-                                    class="p-1 text-gray-300 hover:text-blue-500 hover:bg-gray-100 dark:hover:bg-gray-600 rounded transition-colors" 
-                                    title="複製完整 SHA (Raw)">
+                                <button @click.stop="copySHA(item.currentCommit, $event)" class="p-1 text-gray-300 hover:text-blue-500 hover:bg-gray-100 dark:hover:bg-gray-600 rounded transition-colors" title="複製完整 SHA (Raw)">
                                     <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
                                 </button>
                             </div>
@@ -147,6 +152,13 @@
                     </tr>
                 </tbody>
             </table>
+        </div>
+
+        <div class="flex justify-center mb-10">
+            <div class="flex gap-2">
+                <button @click="prevPage" :disabled="currentPage === 1" class="px-4 py-2 bg-white dark:bg-gray-800 border dark:border-gray-600 rounded shadow hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50">上一頁</button>
+                <button @click="nextPage" :disabled="currentPage === totalPages" class="px-4 py-2 bg-white dark:bg-gray-800 border dark:border-gray-600 rounded shadow hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50">下一頁</button>
+            </div>
         </div>
     </div>
     
@@ -169,15 +181,12 @@
             </div>
             <div class="p-4 border-t dark:border-gray-700 bg-gray-50 dark:bg-gray-800 rounded-b-lg flex flex-wrap gap-2">
                 <button v-if="activeItem.diff" @click="copyDiff" class="px-3 py-2 border bg-white dark:bg-gray-700 dark:text-gray-200 rounded text-sm">{{ copyText }}</button>
-                
                 <button v-if="activeItem.sourceCommit" @click="copySourceSHA" class="px-3 py-2 border bg-white dark:bg-gray-700 dark:text-gray-200 rounded transition-colors hover:bg-gray-100 dark:hover:bg-gray-600 text-sm" title="複製 Frontmatter 中紀錄的 Commit (舊)">
                    🔖 {{ sourceShaBtnText }}
                 </button>
-
                 <button v-if="activeItem.currentCommit" @click="copyCurrentSHA" class="px-3 py-2 border bg-white dark:bg-gray-700 dark:text-gray-200 rounded transition-colors hover:bg-gray-100 dark:hover:bg-gray-600 text-sm" title="複製 YAML 格式: l10n: sourceCommit: ...">
                    🆕 {{ currentShaBtnText }}
                 </button>
-
                 <button @click="copyPrompt" class="px-3 py-2 bg-purple-600 text-white rounded font-bold hover:bg-purple-700 transition-colors text-sm ml-auto sm:ml-0">✨ {{ promptButtonText }}</button>
                 <button @click="closeDiff" class="px-3 py-2 bg-gray-200 dark:bg-gray-700 dark:text-gray-300 rounded ml-auto hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors text-sm">關閉</button>
             </div>
@@ -186,11 +195,16 @@
 </div>
 
 <script>
-    const { createApp } = Vue;
+    const { createApp, shallowRef } = Vue; // 引入 shallowRef 進行效能優化
+
     createApp({
+        // 使用 setup 來初始 rawData 為淺層響應 (效能關鍵)
+        setup() {
+            const rawData = shallowRef([]);
+            return { rawData };
+        },
         data() {
             return { 
-                rawData: [], 
                 promptTemplate: '', 
                 searchQuery: '', 
                 filterStatus: '', 
@@ -200,10 +214,13 @@
                 activeItem: null, 
                 copyText: '複製 Diff', 
                 promptButtonText: '複製 Prompt', 
-                sourceShaBtnText: '複製紀錄 SHA', // Source (Old)
-                currentShaBtnText: '複製 YAML (最新)', // Current (New) - Updated Text
+                sourceShaBtnText: '複製紀錄 SHA', 
+                currentShaBtnText: '複製 YAML (最新)',
                 error: null, 
-                isDarkMode: false 
+                isDarkMode: false,
+                // 分頁相關 State
+                currentPage: 1,
+                pageSize: 50
             }
         },
         async mounted() {
@@ -215,16 +232,34 @@
                 if (savedChecks) this.checkedPaths = JSON.parse(savedChecks);
                 const [dataRes, metaRes] = await Promise.all([ fetch('./data.json'), fetch('./meta.json') ]);
                 if (!dataRes.ok) throw new Error("無法讀取 data.json");
+                
+                // 這裡賦值給 shallowRef，避免 Vue 深度監聽每個屬性
                 this.rawData = await dataRes.json();
+                
                 if (metaRes.ok) this.promptTemplate = (await metaRes.json()).prompt || '';
                 else this.promptTemplate = "Diff: {{DIFF}}\nContent: {{CONTENT}}";
             } catch (e) { this.error = "讀取資料失敗: " + e.message; }
         },
         computed: {
-            stats() { const s = { up_to_date: 0, outdated: 0, missing_meta: 0, untranslated: 0 }; this.rawData.forEach(i => { if (s[i.status] !== undefined) s[i.status]++; }); return s; },
+            stats() { 
+                const s = { up_to_date: 0, outdated: 0, missing_meta: 0, untranslated: 0 }; 
+                // 使用原始迴圈比 array methods 快一點點，但這裡是淺層參照所以沒差
+                for(let i=0; i<this.rawData.length; i++) {
+                    const status = this.rawData[i].status;
+                    if (s[status] !== undefined) s[status]++;
+                }
+                return s; 
+            },
+            // 第一階段：過濾
             filteredData() {
+                // 如果沒有搜尋條件，直接返回 rawData (效能優化)
+                if (!this.searchQuery && !this.filterStatus && !this.filterSize) {
+                    return this.rawData;
+                }
+
+                const query = this.searchQuery.toLowerCase();
                 return this.rawData.filter(item => {
-                    const matchSearch = item.path.toLowerCase().includes(this.searchQuery.toLowerCase());
+                    const matchSearch = !query || item.path.toLowerCase().includes(query);
                     let matchStatus = true;
                     if (this.filterStatus === 'checked') matchStatus = this.checkedPaths.includes(item.path);
                     else if (this.filterStatus) matchStatus = item.status === this.filterStatus;
@@ -232,7 +267,22 @@
                     if (this.filterSize) matchSize = this.getSizeLabel(item.size) === this.filterSize;
                     return matchSearch && matchStatus && matchSize;
                 });
+            },
+            // 第二階段：分頁
+            totalPages() {
+                return Math.ceil(this.filteredData.length / this.pageSize) || 1;
+            },
+            paginatedData() {
+                const start = (this.currentPage - 1) * this.pageSize;
+                const end = start + this.pageSize;
+                return this.filteredData.slice(start, end);
             }
+        },
+        watch: {
+            // 當篩選條件改變時，自動回到第一頁
+            searchQuery() { this.currentPage = 1; },
+            filterStatus() { this.currentPage = 1; },
+            filterSize() { this.currentPage = 1; }
         },
         methods: {
             toggleTheme() { this.isDarkMode = !this.isDarkMode; this.applyTheme(); localStorage.setItem('mdn_theme_preference', this.isDarkMode ? 'dark' : 'light'); },
@@ -257,6 +307,12 @@
             isChecked(p) { return this.checkedPaths.includes(p); },
             toggleCheck(p) { if(this.isChecked(p))this.checkedPaths=this.checkedPaths.filter(x=>x!==p);else this.checkedPaths.push(p); sessionStorage.setItem('mdn_checked_files', JSON.stringify(this.checkedPaths)); },
             
+            // 點擊頂部 Dashboard 卡片時直接設定 Filter
+            setFilter(status) {
+                this.filterStatus = status;
+                this.currentPage = 1;
+            },
+
             openDiff(i) { 
                 this.activeItem = i; 
                 this.copyText = '複製 Diff'; 
@@ -273,7 +329,6 @@
                 await navigator.clipboard.writeText(t); this.promptButtonText='已複製!'; setTimeout(()=>this.promptButtonText='複製 Prompt',1500); 
             },
 
-            // 列表中的小按鈕 (保持 Raw Copy)
             async copySHA(text, event) {
                 if(!text) return;
                 await navigator.clipboard.writeText(text);
@@ -283,7 +338,6 @@
                 setTimeout(() => { btn.innerHTML = originalHTML; }, 1000);
             },
 
-            // 彈窗中的 Source SHA (Raw Copy)
             async copySourceSHA() {
                 if (!this.activeItem.sourceCommit) return;
                 await navigator.clipboard.writeText(this.activeItem.sourceCommit);
@@ -291,17 +345,17 @@
                 setTimeout(() => this.sourceShaBtnText = '複製紀錄 SHA', 1500);
             },
 
-            // ★★★ 關鍵修改：彈窗中的 Current SHA (Formatted Copy) ★★★
             async copyCurrentSHA() {
                 if (!this.activeItem.currentCommit) return;
-                // 根據要求格式化：
-                // l10n:
-                //   sourceCommit: <SHA>
                 const text = `l10n:\n  sourceCommit: ${this.activeItem.currentCommit}`;
                 await navigator.clipboard.writeText(text);
                 this.currentShaBtnText = '已複製 YAML!';
                 setTimeout(() => this.currentShaBtnText = '複製 YAML (最新)', 1500);
-            }
+            },
+
+            // Pagination Methods
+            prevPage() { if (this.currentPage > 1) this.currentPage--; },
+            nextPage() { if (this.currentPage < this.totalPages) this.currentPage++; }
         }
     }).mount('#app');
 </script>
