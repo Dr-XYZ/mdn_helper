@@ -99,8 +99,8 @@
                         <th class="p-4 w-16 text-center">狀態</th>
                         <th class="p-4 w-20 text-center">工作量</th>
                         <th class="p-4">檔案路徑</th>
-                        <th class="p-4 w-32">Source</th>
-                        <th class="p-4 w-32">Current</th>
+                        <th class="p-4 w-32">Source (Old)</th>
+                        <th class="p-4 w-32">Current (New)</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
@@ -126,13 +126,24 @@
                                 <button 
                                     @click.stop="copySHA(item.sourceCommit, $event)" 
                                     class="p-1 text-gray-300 hover:text-blue-500 hover:bg-gray-100 dark:hover:bg-gray-600 rounded transition-colors" 
-                                    title="複製完整 Commit SHA">
+                                    title="複製完整 SHA (Raw)">
                                     <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
                                 </button>
                             </div>
                             <span v-else>-</span>
                         </td>
-                        <td class="p-4 font-mono text-xs text-gray-400">{{ item.currentCommit?.substring(0, 7) || '-' }}</td>
+                        <td class="p-4 font-mono text-xs text-gray-400">
+                            <div v-if="item.currentCommit" class="flex items-center gap-2">
+                                <span>{{ item.currentCommit.substring(0, 7) }}</span>
+                                <button 
+                                    @click.stop="copySHA(item.currentCommit, $event)" 
+                                    class="p-1 text-gray-300 hover:text-blue-500 hover:bg-gray-100 dark:hover:bg-gray-600 rounded transition-colors" 
+                                    title="複製完整 SHA (Raw)">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                                </button>
+                            </div>
+                            <span v-else>-</span>
+                        </td>
                     </tr>
                 </tbody>
             </table>
@@ -156,15 +167,19 @@
                     <pre class="text-gray-600 dark:text-gray-300 whitespace-pre-wrap">{{ activeItem.content }}</pre>
                 </div>
             </div>
-            <div class="p-4 border-t dark:border-gray-700 bg-gray-50 dark:bg-gray-800 rounded-b-lg flex gap-2">
-                <button v-if="activeItem.diff" @click="copyDiff" class="px-4 py-2 border bg-white dark:bg-gray-700 dark:text-gray-200 rounded">{{ copyText }}</button>
+            <div class="p-4 border-t dark:border-gray-700 bg-gray-50 dark:bg-gray-800 rounded-b-lg flex flex-wrap gap-2">
+                <button v-if="activeItem.diff" @click="copyDiff" class="px-3 py-2 border bg-white dark:bg-gray-700 dark:text-gray-200 rounded text-sm">{{ copyText }}</button>
                 
-                <button v-if="activeItem.sourceCommit" @click="copyModalSHA" class="px-4 py-2 border bg-white dark:bg-gray-700 dark:text-gray-200 rounded transition-colors hover:bg-gray-100 dark:hover:bg-gray-600" title="複製完整 Source Commit SHA">
-                   🔖 {{ shaButtonText }}
+                <button v-if="activeItem.sourceCommit" @click="copySourceSHA" class="px-3 py-2 border bg-white dark:bg-gray-700 dark:text-gray-200 rounded transition-colors hover:bg-gray-100 dark:hover:bg-gray-600 text-sm" title="複製 Frontmatter 中紀錄的 Commit (舊)">
+                   🔖 {{ sourceShaBtnText }}
                 </button>
 
-                <button @click="copyPrompt" class="px-4 py-2 bg-purple-600 text-white rounded font-bold hover:bg-purple-700 transition-colors">✨ {{ promptButtonText }}</button>
-                <button @click="closeDiff" class="px-4 py-2 bg-gray-200 dark:bg-gray-700 dark:text-gray-300 rounded ml-auto hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors">關閉</button>
+                <button v-if="activeItem.currentCommit" @click="copyCurrentSHA" class="px-3 py-2 border bg-white dark:bg-gray-700 dark:text-gray-200 rounded transition-colors hover:bg-gray-100 dark:hover:bg-gray-600 text-sm" title="複製 YAML 格式: l10n: sourceCommit: ...">
+                   🆕 {{ currentShaBtnText }}
+                </button>
+
+                <button @click="copyPrompt" class="px-3 py-2 bg-purple-600 text-white rounded font-bold hover:bg-purple-700 transition-colors text-sm ml-auto sm:ml-0">✨ {{ promptButtonText }}</button>
+                <button @click="closeDiff" class="px-3 py-2 bg-gray-200 dark:bg-gray-700 dark:text-gray-300 rounded ml-auto hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors text-sm">關閉</button>
             </div>
         </div>
     </div>
@@ -185,7 +200,8 @@
                 activeItem: null, 
                 copyText: '複製 Diff', 
                 promptButtonText: '複製 Prompt', 
-                shaButtonText: '複製 SHA', // 新增狀態
+                sourceShaBtnText: '複製紀錄 SHA', // Source (Old)
+                currentShaBtnText: '複製 YAML (最新)', // Current (New) - Updated Text
                 error: null, 
                 isDarkMode: false 
             }
@@ -245,7 +261,8 @@
                 this.activeItem = i; 
                 this.copyText = '複製 Diff'; 
                 this.promptButtonText = '複製 Prompt'; 
-                this.shaButtonText = '複製 SHA'; // 重置按鈕文字
+                this.sourceShaBtnText = '複製紀錄 SHA';
+                this.currentShaBtnText = '複製 YAML (最新)';
             },
             closeDiff() { this.activeItem = null; },
             
@@ -256,7 +273,7 @@
                 await navigator.clipboard.writeText(t); this.promptButtonText='已複製!'; setTimeout(()=>this.promptButtonText='複製 Prompt',1500); 
             },
 
-            // 列表中的小按鈕
+            // 列表中的小按鈕 (保持 Raw Copy)
             async copySHA(text, event) {
                 if(!text) return;
                 await navigator.clipboard.writeText(text);
@@ -266,12 +283,24 @@
                 setTimeout(() => { btn.innerHTML = originalHTML; }, 1000);
             },
 
-            // 彈窗中的大按鈕 (新增)
-            async copyModalSHA() {
+            // 彈窗中的 Source SHA (Raw Copy)
+            async copySourceSHA() {
                 if (!this.activeItem.sourceCommit) return;
                 await navigator.clipboard.writeText(this.activeItem.sourceCommit);
-                this.shaButtonText = '已複製!';
-                setTimeout(() => this.shaButtonText = '複製 SHA', 1500);
+                this.sourceShaBtnText = '已複製!';
+                setTimeout(() => this.sourceShaBtnText = '複製紀錄 SHA', 1500);
+            },
+
+            // ★★★ 關鍵修改：彈窗中的 Current SHA (Formatted Copy) ★★★
+            async copyCurrentSHA() {
+                if (!this.activeItem.currentCommit) return;
+                // 根據要求格式化：
+                // l10n:
+                //   sourceCommit: <SHA>
+                const text = `l10n:\n  sourceCommit: ${this.activeItem.currentCommit}`;
+                await navigator.clipboard.writeText(text);
+                this.currentShaBtnText = '已複製 YAML!';
+                setTimeout(() => this.currentShaBtnText = '複製 YAML (最新)', 1500);
             }
         }
     }).mount('#app');
