@@ -1,80 +1,309 @@
-name: MDN Translation Audit
+<!DOCTYPE html>
+<html lang="zh-TW" class="transition-colors duration-300">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MDN 翻譯狀態報告</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = { darkMode: 'class' }
+    </script>
+    <style>
+        [v-cloak] { display: none; }
+        .diff-added { background-color: #d1fae5; color: #065f46; font-weight: bold; border-radius: 2px; padding: 0 2px; }
+        .diff-removed { background-color: #fee2e2; color: #991b1b; text-decoration: line-through; opacity: 0.8; border-radius: 2px; padding: 0 2px; }
+        html.dark .diff-added { background-color: rgba(6, 95, 70, 0.6); color: #a7f3d0; }
+        html.dark .diff-removed { background-color: rgba(127, 29, 29, 0.6); color: #fecaca; }
+        .status-dot { transition: all 0.2s; cursor: pointer; }
+        .status-dot:hover { transform: scale(1.25); box-shadow: 0 0 8px rgba(0,0,0,0.1); }
+        input[type="checkbox"] { transform: scale(1.2); cursor: pointer; }
+        
+        /* Badges */
+        .badge { display: inline-block; padding: 2px 8px; border-radius: 9999px; font-size: 0.75rem; font-weight: 700; white-space: nowrap; }
+        
+        .badge-done { background-color: #f3f4f6; color: #9ca3af; border: 1px dashed #d1d5db; }
+        .badge-xs { background-color: #f3f4f6; color: #4b5563; border: 1px solid #d1d5db; }
+        .badge-s  { background-color: #d1fae5; color: #065f46; border: 1px solid #6ee7b7; }
+        .badge-m  { background-color: #dbeafe; color: #1e40af; border: 1px solid #93c5fd; }
+        .badge-l  { background-color: #ffedd5; color: #9a3412; border: 1px solid #fdba74; }
+        .badge-xl { background-color: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
 
-on:
-  workflow_dispatch:
-  schedule:
-    - cron: '0 0 * * *'
+        html.dark .badge-done { background-color: #1f2937; color: #6b7280; border-color: #374151; }
+        html.dark .badge-xs { background-color: #374151; color: #e5e7eb; border-color: #4b5563; }
+        html.dark .badge-s  { background-color: #064e3b; color: #6ee7b7; border-color: #059669; }
+        html.dark .badge-m  { background-color: #1e3a8a; color: #93c5fd; border-color: #2563eb; }
+        html.dark .badge-l  { background-color: #7c2d12; color: #fdba74; border-color: #ea580c; }
+        html.dark .badge-xl { background-color: #7f1d1d; color: #fca5a5; border-color: #dc2626; }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-100 h-screen overflow-hidden transition-colors duration-300">
+<div id="app" v-cloak class="flex flex-col h-full">
+    <div v-if="error" class="p-4 bg-red-100 text-red-700 text-center font-bold">{{ error }}</div>
+    <div class="flex-1 overflow-y-auto p-6" v-else>
+        <header class="mb-8 flex justify-between items-center">
+            <div>
+                <h1 class="text-3xl font-bold mb-2 text-gray-900 dark:text-white">MDN 翻譯同步狀態報告</h1>
+                <p class="text-sm text-gray-500 dark:text-gray-400">生成時間: {{ generatedTime }}</p>
+            </div>
+            <button @click="toggleTheme" class="p-3 rounded-full bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors">
+                <span v-if="isDarkMode">☀️</span><span v-else>🌙</span>
+            </button>
+        </header>
 
-permissions:
-  contents: read
-  pages: write
-  id-token: write
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+            <div class="bg-white dark:bg-gray-800 p-4 rounded shadow border-l-4 border-green-500 cursor-pointer" @click="filterStatus = 'up_to_date'">
+                <div class="text-gray-500 dark:text-gray-400 text-sm">最新版本</div>
+                <div class="text-2xl font-bold">{{ stats.up_to_date }}</div>
+            </div>
+            <div class="bg-white dark:bg-gray-800 p-4 rounded shadow border-l-4 border-yellow-400 cursor-pointer" @click="filterStatus = 'outdated'">
+                <div class="text-gray-500 dark:text-gray-400 text-sm">需要更新</div>
+                <div class="text-2xl font-bold">{{ stats.outdated }}</div>
+            </div>
+            <div class="bg-white dark:bg-gray-800 p-4 rounded shadow border-l-4 border-red-500 cursor-pointer" @click="filterStatus = 'missing_meta'">
+                <div class="text-gray-500 dark:text-gray-400 text-sm">缺少 Meta</div>
+                <div class="text-2xl font-bold">{{ stats.missing_meta }}</div>
+            </div>
+            <div class="bg-white dark:bg-gray-800 p-4 rounded shadow border-l-4 border-gray-400 cursor-pointer" @click="filterStatus = 'untranslated'">
+                <div class="text-gray-500 dark:text-gray-400 text-sm">未翻譯</div>
+                <div class="text-2xl font-bold">{{ stats.untranslated }}</div>
+            </div>
+        </div>
 
-jobs:
-  build-and-deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Audit Tool
-        uses: actions/checkout@v4
+        <div class="bg-white dark:bg-gray-800 p-4 rounded shadow mb-6 flex gap-4 items-center flex-wrap">
+            <input type="text" v-model="searchQuery" placeholder="搜尋檔案路徑..." class="flex-1 border dark:border-gray-600 rounded px-3 py-2 bg-white dark:bg-gray-700">
+            <select v-model="filterStatus" class="border dark:border-gray-600 rounded px-3 py-2 bg-white dark:bg-gray-700">
+                <option value="">所有狀態</option>
+                <option value="up_to_date">最新版本</option>
+                <option value="outdated">需要更新</option>
+                <option value="missing_meta">缺少 Meta</option>
+                <option value="untranslated">未翻譯</option>
+                <option value="checked">已標記 (Checked)</option>
+            </select>
+            <select v-model="filterSize" class="border dark:border-gray-600 rounded px-3 py-2 bg-white dark:bg-gray-700">
+                <option value="">所有大小</option>
+                <option value="XS">極小</option>
+                <option value="S">小</option>
+                <option value="M">中</option>
+                <option value="L">大</option>
+                <option value="XL">特大</option>
+            </select>
+            <span class="text-sm text-gray-500 font-mono" v-if="checkedPaths.length > 0">已標記: {{ checkedPaths.length }}</span>
+        </div>
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
+        <div class="bg-white dark:bg-gray-800 rounded shadow overflow-x-auto mb-10">
+            <table class="w-full text-left border-collapse">
+                <thead>
+                    <tr class="bg-gray-50 dark:bg-gray-700 border-b dark:border-gray-600 text-xs uppercase text-gray-500 dark:text-gray-400">
+                        <th class="p-4 w-12 text-center">選取</th>
+                        <th class="p-4 w-16 text-center">狀態</th>
+                        <th class="p-4 w-20 text-center">工作量</th>
+                        <th class="p-4">檔案路徑</th>
+                        <th class="p-4 w-32">Source (Old)</th>
+                        <th class="p-4 w-32">Current (New)</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
+                    <tr v-for="item in filteredData" :key="item.path" class="hover:bg-gray-50 dark:hover:bg-gray-700 group" :class="{'bg-blue-50 dark:bg-blue-900/30': isChecked(item.path)}">
+                        <td class="p-4 text-center"><input type="checkbox" :checked="isChecked(item.path)" @change="toggleCheck(item.path)"></td>
+                        <td class="p-4 text-center"><div class="w-4 h-4 rounded-full mx-auto status-dot" :class="colorClass(item.status)" @click="openDiff(item)"></div></td>
+                        <td class="p-4 text-center">
+                            <span :class="['badge', sizeBadgeClass(item.size)]">{{ getSizeLabel(item.size) }}</span>
+                            <div v-if="item.size > 0" class="text-[10px] text-gray-400 mt-1 font-mono">{{ (item.size / 1024).toFixed(1) }} KB</div>
+                        </td>
+                        <td class="p-4 font-mono text-sm">
+                            <a :href="item.url" target="_blank" class="text-blue-600 dark:text-blue-400 hover:underline block truncate max-w-lg">{{ item.path }}</a>
+                            <div class="flex gap-2 items-center mt-1">
+                                <span @click="openDiff(item)" class="text-xs text-gray-500 cursor-pointer hover:text-blue-500">[開啟詳情]</span>
+                                <a v-if="item.pr" :href="item.pr.url" target="_blank" class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-700 border border-purple-300 dark:bg-purple-900/50 dark:text-purple-300 dark:border-purple-700 hover:bg-purple-200" :title="item.pr.title + ' by ' + item.pr.user">
+                                   <span class="mr-0.5">🚀</span> PR #{{ item.pr.number }}
+                                </a>
+                            </div>
+                        </td>
+                        <td class="p-4 font-mono text-xs text-gray-400">
+                            <div v-if="item.sourceCommit" class="flex items-center gap-2">
+                                <span>{{ item.sourceCommit.substring(0, 7) }}</span>
+                                <button 
+                                    @click.stop="copySHA(item.sourceCommit, $event)" 
+                                    class="p-1 text-gray-300 hover:text-blue-500 hover:bg-gray-100 dark:hover:bg-gray-600 rounded transition-colors" 
+                                    title="複製完整 SHA (Raw)">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                                </button>
+                            </div>
+                            <span v-else>-</span>
+                        </td>
+                        <td class="p-4 font-mono text-xs text-gray-400">
+                            <div v-if="item.currentCommit" class="flex items-center gap-2">
+                                <span>{{ item.currentCommit.substring(0, 7) }}</span>
+                                <button 
+                                    @click.stop="copySHA(item.currentCommit, $event)" 
+                                    class="p-1 text-gray-300 hover:text-blue-500 hover:bg-gray-100 dark:hover:bg-gray-600 rounded transition-colors" 
+                                    title="複製完整 SHA (Raw)">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                                </button>
+                            </div>
+                            <span v-else>-</span>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    
+    <div v-if="activeItem" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 backdrop-blur-sm" @click.self="closeDiff">
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-5xl h-[85vh] flex flex-col">
+            <div class="p-4 border-b dark:border-gray-700 flex justify-between bg-gray-50 dark:bg-gray-750 rounded-t-lg items-center">
+                <div><h3 class="font-bold dark:text-white">檔案詳情</h3><p class="text-xs text-gray-500">{{ activeItem.path }}</p></div>
+                <button @click="closeDiff" class="text-2xl font-bold text-gray-500 hover:text-black dark:text-gray-400">&times;</button>
+            </div>
+            <div class="flex-1 overflow-auto p-4 bg-gray-50 dark:bg-gray-900 font-mono text-sm">
+                <div v-if="activeItem.diff" class="bg-white dark:bg-gray-800 border dark:border-gray-700 rounded p-2 mb-4">
+                    <div class="text-xs text-gray-400 mb-2 border-b pb-1">Git Word Diff:</div>
+                    <div v-html="formatWordDiff(activeItem.diff)" class="leading-relaxed text-gray-600 dark:text-gray-300 whitespace-pre-wrap"></div>
+                </div>
+                <div v-else class="text-center text-gray-400 py-4 mb-4 border-2 border-dashed rounded">(無 Git Diff 變更紀錄)</div>
+                <div v-if="activeItem.content" class="bg-white dark:bg-gray-800 border dark:border-gray-700 rounded p-2 h-64 overflow-y-auto">
+                    <div class="text-xs text-gray-400 mb-2 border-b pb-1">內容預覽:</div>
+                    <pre class="text-gray-600 dark:text-gray-300 whitespace-pre-wrap">{{ activeItem.content }}</pre>
+                </div>
+            </div>
+            <div class="p-4 border-t dark:border-gray-700 bg-gray-50 dark:bg-gray-800 rounded-b-lg flex flex-wrap gap-2">
+                <button v-if="activeItem.diff" @click="copyDiff" class="px-3 py-2 border bg-white dark:bg-gray-700 dark:text-gray-200 rounded text-sm">{{ copyText }}</button>
+                
+                <button v-if="activeItem.sourceCommit" @click="copySourceSHA" class="px-3 py-2 border bg-white dark:bg-gray-700 dark:text-gray-200 rounded transition-colors hover:bg-gray-100 dark:hover:bg-gray-600 text-sm" title="複製 Frontmatter 中紀錄的 Commit (舊)">
+                   🔖 {{ sourceShaBtnText }}
+                </button>
 
-      - name: Install Dependencies
-        run: npm ci
+                <button v-if="activeItem.currentCommit" @click="copyCurrentSHA" class="px-3 py-2 border bg-white dark:bg-gray-700 dark:text-gray-200 rounded transition-colors hover:bg-gray-100 dark:hover:bg-gray-600 text-sm" title="複製 YAML 格式: l10n: sourceCommit: ...">
+                   🆕 {{ currentShaBtnText }}
+                </button>
 
-      # Checkout 英文源 (需完整歷史)
-      - name: Checkout MDN Content
-        uses: actions/checkout@v4
-        with:
-          repository: mdn/content
-          path: mdn-content
-          fetch-depth: 0 
+                <button @click="copyPrompt" class="px-3 py-2 bg-purple-600 text-white rounded font-bold hover:bg-purple-700 transition-colors text-sm ml-auto sm:ml-0">✨ {{ promptButtonText }}</button>
+                <button @click="closeDiff" class="px-3 py-2 bg-gray-200 dark:bg-gray-700 dark:text-gray-300 rounded ml-auto hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors text-sm">關閉</button>
+            </div>
+        </div>
+    </div>
+</div>
 
-      # Checkout 翻譯源
-      - name: Checkout MDN Translated Content
-        uses: actions/checkout@v4
-        with:
-          repository: mdn/translated-content
-          path: mdn-translated-content
-          fetch-depth: 1
-
-      - name: Fetch Open PRs Data
-        run: |
-          gh api graphql -f query='
-            query {
-              search(query: "repo:mdn/translated-content is:pr is:open label:l10n-zh", type: ISSUE, first: 100) {
-                nodes {
-                  ... on PullRequest {
-                    number
-                    url
-                    title
-                    author { login }
-                    files(first: 100) {
-                      nodes { path }
-                    }
-                  }
-                }
-              }
+<script>
+    const { createApp } = Vue;
+    createApp({
+        data() {
+            return { 
+                rawData: [], 
+                promptTemplate: '', 
+                searchQuery: '', 
+                filterStatus: '', 
+                filterSize: '', 
+                checkedPaths: [], 
+                generatedTime: new Date().toLocaleString(), 
+                activeItem: null, 
+                copyText: '複製 Diff', 
+                promptButtonText: '複製 Prompt', 
+                sourceShaBtnText: '複製紀錄 SHA', // Source (Old)
+                currentShaBtnText: '複製 YAML (最新)', // Current (New) - Updated Text
+                error: null, 
+                isDarkMode: false 
             }
-          ' > prs.json
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      
-      - name: Run Audit Script
-        run: npm run audit
+        },
+        async mounted() {
+            const savedTheme = localStorage.getItem('mdn_theme_preference');
+            this.isDarkMode = savedTheme ? savedTheme === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches;
+            this.applyTheme();
+            try {
+                const savedChecks = sessionStorage.getItem('mdn_checked_files');
+                if (savedChecks) this.checkedPaths = JSON.parse(savedChecks);
+                const [dataRes, metaRes] = await Promise.all([ fetch('./data.json'), fetch('./meta.json') ]);
+                if (!dataRes.ok) throw new Error("無法讀取 data.json");
+                this.rawData = await dataRes.json();
+                if (metaRes.ok) this.promptTemplate = (await metaRes.json()).prompt || '';
+                else this.promptTemplate = "Diff: {{DIFF}}\nContent: {{CONTENT}}";
+            } catch (e) { this.error = "讀取資料失敗: " + e.message; }
+        },
+        computed: {
+            stats() { const s = { up_to_date: 0, outdated: 0, missing_meta: 0, untranslated: 0 }; this.rawData.forEach(i => { if (s[i.status] !== undefined) s[i.status]++; }); return s; },
+            filteredData() {
+                return this.rawData.filter(item => {
+                    const matchSearch = item.path.toLowerCase().includes(this.searchQuery.toLowerCase());
+                    let matchStatus = true;
+                    if (this.filterStatus === 'checked') matchStatus = this.checkedPaths.includes(item.path);
+                    else if (this.filterStatus) matchStatus = item.status === this.filterStatus;
+                    let matchSize = true;
+                    if (this.filterSize) matchSize = this.getSizeLabel(item.size) === this.filterSize;
+                    return matchSearch && matchStatus && matchSize;
+                });
+            }
+        },
+        methods: {
+            toggleTheme() { this.isDarkMode = !this.isDarkMode; this.applyTheme(); localStorage.setItem('mdn_theme_preference', this.isDarkMode ? 'dark' : 'light'); },
+            applyTheme() { document.documentElement.classList.toggle('dark', this.isDarkMode); },
+            formatWordDiff(text) { if (!text) return ''; return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\[-(.*?)-\]/g, '<span class="diff-removed">$1</span>').replace(/\{\+(.*?)\+\}/g, '<span class="diff-added">$1</span>'); },
+            colorClass(s) { return { 'up_to_date': 'bg-green-500', 'outdated': 'bg-yellow-400', 'missing_meta': 'bg-red-500', 'untranslated': 'bg-gray-300' }[s] || 'bg-gray-200'; },
+            
+            getSizeLabel(bytes) {
+                if (!bytes || bytes === 0) return 'Done';
+                if (bytes < 200) return 'XS';
+                if (bytes < 1024) return 'S';
+                if (bytes < 5 * 1024) return 'M';
+                if (bytes < 20 * 1024) return 'L';
+                return 'XL';
+            },
+            sizeBadgeClass(bytes) { 
+                const label = this.getSizeLabel(bytes);
+                if (label === 'Done') return 'badge-done';
+                return 'badge-' + label.toLowerCase(); 
+            },
 
-      - name: Setup Pages
-        uses: actions/configure-pages@v4
+            isChecked(p) { return this.checkedPaths.includes(p); },
+            toggleCheck(p) { if(this.isChecked(p))this.checkedPaths=this.checkedPaths.filter(x=>x!==p);else this.checkedPaths.push(p); sessionStorage.setItem('mdn_checked_files', JSON.stringify(this.checkedPaths)); },
+            
+            openDiff(i) { 
+                this.activeItem = i; 
+                this.copyText = '複製 Diff'; 
+                this.promptButtonText = '複製 Prompt'; 
+                this.sourceShaBtnText = '複製紀錄 SHA';
+                this.currentShaBtnText = '複製 YAML (最新)';
+            },
+            closeDiff() { this.activeItem = null; },
+            
+            async copyDiff() { await navigator.clipboard.writeText(this.activeItem.diff); this.copyText='已複製!'; setTimeout(()=>this.copyText='複製 Diff',1500); },
+            
+            async copyPrompt() { 
+                let t = this.promptTemplate.replace('{{DIFF}}', this.activeItem.diff||'').replace('{{CONTENT}}', this.activeItem.content||'').replace('{{PATH}}', this.activeItem.path||'');
+                await navigator.clipboard.writeText(t); this.promptButtonText='已複製!'; setTimeout(()=>this.promptButtonText='複製 Prompt',1500); 
+            },
 
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: './public'
+            // 列表中的小按鈕 (保持 Raw Copy)
+            async copySHA(text, event) {
+                if(!text) return;
+                await navigator.clipboard.writeText(text);
+                const btn = event.currentTarget;
+                const originalHTML = btn.innerHTML;
+                btn.innerHTML = '<span class="font-bold text-green-500">✓</span>';
+                setTimeout(() => { btn.innerHTML = originalHTML; }, 1000);
+            },
 
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+            // 彈窗中的 Source SHA (Raw Copy)
+            async copySourceSHA() {
+                if (!this.activeItem.sourceCommit) return;
+                await navigator.clipboard.writeText(this.activeItem.sourceCommit);
+                this.sourceShaBtnText = '已複製!';
+                setTimeout(() => this.sourceShaBtnText = '複製紀錄 SHA', 1500);
+            },
+
+            // ★★★ 關鍵修改：彈窗中的 Current SHA (Formatted Copy) ★★★
+            async copyCurrentSHA() {
+                if (!this.activeItem.currentCommit) return;
+                // 根據要求格式化：
+                // l10n:
+                //   sourceCommit: <SHA>
+                const text = `l10n:\n  sourceCommit: ${this.activeItem.currentCommit}`;
+                await navigator.clipboard.writeText(text);
+                this.currentShaBtnText = '已複製 YAML!';
+                setTimeout(() => this.currentShaBtnText = '複製 YAML (最新)', 1500);
+            }
+        }
+    }).mount('#app');
+</script>
+</body>
+</html>
